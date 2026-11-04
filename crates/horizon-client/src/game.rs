@@ -21829,7 +21829,7 @@ impl ApplicationHandler for App {
             App::Ready(game) => game.resumed(event_loop),
         }
     }
-    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
+    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
         match self {
             App::Loading(loading) => loading.suspended(event_loop),
             App::Ready(game) => game.suspended(event_loop),
