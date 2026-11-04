@@ -40,10 +40,25 @@ final class Msa {
 
     static String clientId(Context c) {
         try {
-            return new String(java.nio.file.Files.readAllBytes(idFile(c).toPath()), StandardCharsets.UTF_8).trim();
-        } catch (Exception e) {
+            String saved = new String(java.nio.file.Files.readAllBytes(idFile(c).toPath()), StandardCharsets.UTF_8).trim();
+            if (validClientId(saved)) return saved;
+        } catch (Exception ignored) {
+        }
+        try (InputStream in = c.getAssets().open("horizon-auth.json")) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[1024];
+            for (int n; (n = in.read(buffer)) != -1;) out.write(buffer, 0, n);
+            String embedded = new JSONObject(new String(out.toByteArray(), StandardCharsets.UTF_8))
+                    .optString("microsoft_client_id", "").trim();
+            return validClientId(embedded) ? embedded : "";
+        } catch (Exception ignored) {
             return "";
         }
+    }
+
+    static boolean validClientId(String id) {
+        return id.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
+                && !id.equals("00000000-0000-0000-0000-000000000000");
     }
 
     static void saveClientId(Context c, String id) throws Exception {

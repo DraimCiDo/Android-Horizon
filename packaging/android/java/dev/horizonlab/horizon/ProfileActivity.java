@@ -169,8 +169,8 @@ public class ProfileActivity extends Activity implements View.OnClickListener {
         advancedBox = new LinearLayout(this);
         advancedBox.setOrientation(LinearLayout.VERTICAL);
         advancedBox.addView(Ui.text(this, Ui.t(
-                "Azure client ID. Нужен свой, одобренный Mojang для Minecraft (заявка: aka.ms/mce-reviewappid), иначе сервисы Minecraft откажут во входе. Чужие ID не вставляйте.",
-                "Azure client ID. It has to be your own, approved by Mojang for Minecraft (apply at aka.ms/mce-reviewappid), or the Minecraft services refuse the sign-in. Don't paste someone else's ID."),
+                "Настройка для автора сборки: client ID зарегистрированного Microsoft-приложения с доступом к Minecraft API. Это не ID игрового аккаунта. Обычно автор встраивает его в APK.",
+                "Build-owner setting: the client ID of a registered Microsoft application with Minecraft API access. This is not a player account ID. The build owner normally embeds it in the APK."),
                 12, Ui.MUTED, false));
         clientId = new EditText(this);
         clientId.setSingleLine(true);
@@ -269,11 +269,11 @@ public class ProfileActivity extends Activity implements View.OnClickListener {
             advancedBox.setVisibility(advancedBox.getVisibility() == View.VISIBLE ? View.GONE : View.VISIBLE);
         } else if (v == microsoft) {
             String id = clientId.getText().toString().trim();
-            if (!id.matches("[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")) {
+            if (!Msa.validClientId(id)) {
                 advancedBox.setVisibility(View.VISIBLE);
                 message.setTextColor(Ui.WARN);
-                message.setText(Ui.t("Сначала вставьте свой Azure client ID в «Дополнительно».",
-                        "Paste your own Azure client ID under Advanced first."));
+                message.setText(Ui.t("В этой сборке Microsoft-вход ещё не настроен автором: отсутствует client ID приложения. Это не ваш пароль или ID Minecraft-аккаунта.",
+                        "Microsoft sign-in is not configured by this build's owner: its application client ID is missing. This is not your password or Minecraft account ID."));
                 return;
             }
             try {

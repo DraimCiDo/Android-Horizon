@@ -26,12 +26,17 @@ rm -rf "$OUT/res" && mkdir -p "$OUT/res"
 "$BT/aapt2" link -o "$OUT/unaligned.apk" --manifest packaging/android/AndroidManifest.xml -I "$PLATFORM" \
   --min-sdk-version 26 --target-sdk-version 35 "$OUT/res/res.zip"
 python3 - "$OUT" <<'PY'
-import os, sys, zipfile
+import json, os, sys, zipfile
 from pathlib import Path
+from tools.android_auth import configuration
 out = sys.argv[1]
 with zipfile.ZipFile(f"{out}/unaligned.apk", "a", zipfile.ZIP_DEFLATED) as z:
     z.write(f"{out}/java/classes.dex", "classes.dex")
     z.write(f"{out}/stage/lib/arm64-v8a/libhorizon.so", "lib/arm64-v8a/libhorizon.so")
+    auth = configuration(os.environ.get('HORIZON_MSA_CLIENT_ID'))
+    z.writestr('assets/horizon-auth.json', json.dumps(auth))
+    if not auth['microsoft_client_id']:
+        print('Microsoft sign-in is not configured: set the build owner\'s HORIZON_MSA_CLIENT_ID.', file=sys.stderr)
     bundle = Path(os.environ.get('HORIZON_BUNDLE_DIR', f'{out}/bundle'))
     if (bundle / 'horizon-resources.zip').is_file():
         for name in ('horizon-resources.zip', 'horizon-bundle.json'):

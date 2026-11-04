@@ -25,6 +25,7 @@ jobs:
       PROFILE: release
       HORIZON_VERSION: 0.4.1-android
       HORIZON_REQUIRE_BUNDLE: '1'
+      HORIZON_MSA_CLIENT_ID: ${{ vars.HORIZON_MSA_CLIENT_ID }}
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
