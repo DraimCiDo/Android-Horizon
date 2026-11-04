@@ -15942,7 +15942,6 @@ impl Game<'_> {
             camera.y.floor() as i32,
             camera.z.floor() as i32,
         ];
-        if let Some(r) = self.renderer.as_mut() {}
         // The camera inside an opaque block sees nothing through it: disable.
         let cave_culling = self.settings.horizon.cave_culling
             && !self
@@ -17392,7 +17391,7 @@ impl ApplicationHandler for Game<'_> {
         self.apply_settings();
         self.previous = Instant::now();
     }
-    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
         // Android: the native window goes away in the background. Stop polling
         // so the process sleeps instead of running at full speed behind Home.
         // Home or another app: the game freezes. A world opens the pause menu (single player
@@ -17401,7 +17400,7 @@ impl ApplicationHandler for Game<'_> {
         #[cfg(target_os = "android")]
         {
             ANDROID_BACKGROUND.store(true, Ordering::Relaxed);
-            event_loop.set_control_flow(ControlFlow::Wait);
+            _event_loop.set_control_flow(ControlFlow::Wait);
             if self.player.is_some()
                 && self.title.is_none()
                 && self.screen == Screen::Playing
@@ -21830,7 +21829,7 @@ impl ApplicationHandler for App {
             App::Ready(game) => game.resumed(event_loop),
         }
     }
-    fn suspended(&mut self, event_loop: &ActiveEventLoop) {
+    fn suspended(&mut self, _event_loop: &ActiveEventLoop) {
         match self {
             App::Loading(loading) => loading.suspended(event_loop),
             App::Ready(game) => game.suspended(event_loop),

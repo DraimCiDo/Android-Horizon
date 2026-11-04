@@ -1,8 +1,8 @@
 <p align="center">
-
-Android / Samsung S25 Ultra: [build and install](docs/samsung-s25-ultra.md).
   <img src="docs/media/banner.webp" alt="The Horizon website: the game you know, rebuilt in Rust" width="100%">
 </p>
+
+Android / Samsung S25 Ultra: [build and install](docs/samsung-s25-ultra.md).
 
 <p align="center">
   <a href="https://github.com/horizon-rust/horizon/actions/workflows/ci.yml"><img src="https://github.com/horizon-rust/horizon/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>

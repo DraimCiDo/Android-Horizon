@@ -340,14 +340,17 @@ pub(super) struct Touches {
     /// Where the finger now going down on a button is (for pass-through).
     press_at: [f64; 2],
     /// The soft keyboard was asked for.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     ime_shown: bool,
     /// A menu tap since the last frame: ask for the keyboard again if a field wants it.
     ime_retap: bool,
     /// A controller, keyboard or mouse plays: the controls are hidden until a touch.
     pub(super) hardware: bool,
     /// A mouse has been used: the pointer is captured while playing.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub(super) mouse: bool,
     /// The pointer capture last asked for.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub(super) pointer_captured: Option<bool>,
 }
 
@@ -761,6 +764,7 @@ impl Game<'_> {
     }
 
     /// Every finger lifted at once (the app went to the background): nothing stays held.
+    #[cfg_attr(not(target_os = "android"), allow(dead_code))]
     pub(super) fn touch_release_all(&mut self) {
         self.touch.fingers.clear();
         self.touch.knob = [0.0, 0.0];
