@@ -97,7 +97,12 @@ fn get_bytes(agent: &ureq::Agent, url: &str) -> Result<Vec<u8>, String> {
 }
 
 /// Downloads `url` to `target`, resuming a `.part` file, counting bytes; checks `sha1` if given.
-fn download(agent: &ureq::Agent, url: &str, target: &Path, sha1: Option<&str>) -> Result<(), String> {
+fn download(
+    agent: &ureq::Agent,
+    url: &str,
+    target: &Path,
+    sha1: Option<&str>,
+) -> Result<(), String> {
     if let Some(parent) = target.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -187,8 +192,15 @@ fn wanted_asset(name: &str) -> bool {
 }
 
 fn version_json(agent: &ureq::Agent, lock: &Value) -> Result<Value, String> {
-    let version = lock["minecraft"]["version"].as_str().ok_or("lock: no version")?;
-    let mut accepted: Vec<String> = vec![lock["minecraft"]["manifest_sha1"].as_str().unwrap_or("").into()];
+    let version = lock["minecraft"]["version"]
+        .as_str()
+        .ok_or("lock: no version")?;
+    let mut accepted: Vec<String> = vec![
+        lock["minecraft"]["manifest_sha1"]
+            .as_str()
+            .unwrap_or("")
+            .into(),
+    ];
     if let Some(list) = lock["minecraft"]["accepted_manifest_sha1"].as_array() {
         accepted.extend(list.iter().filter_map(|v| v.as_str().map(String::from)));
     }
@@ -202,7 +214,8 @@ fn version_json(agent: &ureq::Agent, lock: &Value) -> Result<Value, String> {
             }
         }
     }
-    let manifest: Value = serde_json::from_slice(&get_bytes(agent, MANIFEST)?).map_err(|e| e.to_string())?;
+    let manifest: Value =
+        serde_json::from_slice(&get_bytes(agent, MANIFEST)?).map_err(|e| e.to_string())?;
     let entry = manifest["versions"]
         .as_array()
         .and_then(|v| v.iter().find(|v| v["id"] == version))
@@ -230,7 +243,9 @@ fn run(home: &Path, derived: &str) -> Result<(), String> {
     counters(1, 0);
     let version = version_json(&agent, &lock)?;
     let client = &version["downloads"]["client"];
-    let client_sha1 = lock["minecraft"]["client_sha1"].as_str().ok_or("lock: no client_sha1")?;
+    let client_sha1 = lock["minecraft"]["client_sha1"]
+        .as_str()
+        .ok_or("lock: no client_sha1")?;
     if client["sha1"].as_str() != Some(client_sha1) {
         return Err("Mojang's 26.3 client is not the pinned one".into());
     }
@@ -238,7 +253,12 @@ fn run(home: &Path, derived: &str) -> Result<(), String> {
     if sha1_file(&jar).as_deref() != Some(client_sha1) {
         stage("client");
         counters(1, client["size"].as_u64().unwrap_or(0));
-        download(&agent, client["url"].as_str().ok_or("no client url")?, &jar, Some(client_sha1))?;
+        download(
+            &agent,
+            client["url"].as_str().ok_or("no client url")?,
+            &jar,
+            Some(client_sha1),
+        )?;
     }
 
     stage("index");
@@ -246,7 +266,12 @@ fn run(home: &Path, derived: &str) -> Result<(), String> {
     let index_path = resources.join("asset-index.json");
     let index_sha1 = index_info["sha1"].as_str().ok_or("no asset index sha1")?;
     if sha1_file(&index_path).as_deref() != Some(index_sha1) {
-        download(&agent, index_info["url"].as_str().ok_or("no index url")?, &index_path, Some(index_sha1))?;
+        download(
+            &agent,
+            index_info["url"].as_str().ok_or("no index url")?,
+            &index_path,
+            Some(index_sha1),
+        )?;
     }
     let index: Value = serde_json::from_slice(&fs::read(&index_path).map_err(|e| e.to_string())?)
         .map_err(|e| e.to_string())?;
@@ -255,13 +280,21 @@ fn run(home: &Path, derived: &str) -> Result<(), String> {
         .ok_or("asset index has no objects")?
         .iter()
         .filter(|(n, _)| wanted_asset(n))
-        .filter_map(|(n, v)| Some((n.clone(), v["hash"].as_str()?.to_string(), v["size"].as_u64()?)))
+        .filter_map(|(n, v)| {
+            Some((
+                n.clone(),
+                v["hash"].as_str()?.to_string(),
+                v["size"].as_u64()?,
+            ))
+        })
         .filter(|(n, h, _)| h.len() == 40 && !n.contains(".."))
         .collect();
 
     stage("extract");
-    let indexed: std::collections::HashMap<String, String> =
-        objects.iter().map(|(n, h, _)| (n.clone(), h.clone())).collect();
+    let indexed: std::collections::HashMap<String, String> = objects
+        .iter()
+        .map(|(n, h, _)| (n.clone(), h.clone()))
+        .collect();
     horizon_prepare::device::from_client_jar(
         &jar,
         &resources,
@@ -295,34 +328,47 @@ fn run(home: &Path, derived: &str) -> Result<(), String> {
     }
     let queue = Arc::new(Mutex::new(queue));
     let done_file = Arc::new(Mutex::new(
-        fs::OpenOptions::new().create(true).append(true).open(&done_path).map_err(|e| e.to_string())?,
+        fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&done_path)
+            .map_err(|e| e.to_string())?,
     ));
     let failure: Arc<Mutex<Option<String>>> = Arc::new(Mutex::new(None));
     let workers: Vec<_> = (0..THREADS)
         .map(|_| {
-            let (queue, done_file, failure, agent) =
-                (queue.clone(), done_file.clone(), failure.clone(), agent.clone());
-            std::thread::spawn(move || loop {
-                if failure.lock().unwrap().is_some() {
-                    return;
-                }
-                let Some((target, hash, key)) = queue.lock().unwrap().pop() else {
-                    return;
-                };
-                let ok = sha1_file(&target).as_deref() == Some(hash.as_str()) && {
-                    let size = fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
-                    BYTES_DONE.fetch_add(size, Ordering::Relaxed);
-                    true
-                };
-                if !ok {
-                    let url = format!("https://resources.download.minecraft.net/{}/{hash}", &hash[..2]);
-                    if let Err(e) = download(&agent, &url, &target, Some(&hash)) {
-                        *failure.lock().unwrap() = Some(e);
+            let (queue, done_file, failure, agent) = (
+                queue.clone(),
+                done_file.clone(),
+                failure.clone(),
+                agent.clone(),
+            );
+            std::thread::spawn(move || {
+                loop {
+                    if failure.lock().unwrap().is_some() {
                         return;
                     }
+                    let Some((target, hash, key)) = queue.lock().unwrap().pop() else {
+                        return;
+                    };
+                    let ok = sha1_file(&target).as_deref() == Some(hash.as_str()) && {
+                        let size = fs::metadata(&target).map(|m| m.len()).unwrap_or(0);
+                        BYTES_DONE.fetch_add(size, Ordering::Relaxed);
+                        true
+                    };
+                    if !ok {
+                        let url = format!(
+                            "https://resources.download.minecraft.net/{}/{hash}",
+                            &hash[..2]
+                        );
+                        if let Err(e) = download(&agent, &url, &target, Some(&hash)) {
+                            *failure.lock().unwrap() = Some(e);
+                            return;
+                        }
+                    }
+                    let _ = writeln!(done_file.lock().unwrap(), "{key}");
+                    FILES_DONE.fetch_add(1, Ordering::Relaxed);
                 }
-                let _ = writeln!(done_file.lock().unwrap(), "{key}");
-                FILES_DONE.fetch_add(1, Ordering::Relaxed);
             })
         })
         .collect();
@@ -344,7 +390,11 @@ fn run(home: &Path, derived: &str) -> Result<(), String> {
         }
         let target = work.join("derived.zip");
         if !target.is_file() {
-            let size = agent.head(url).call().ok().and_then(|r| r.header("Content-Length")?.parse().ok());
+            let size = agent
+                .head(url)
+                .call()
+                .ok()
+                .and_then(|r| r.header("Content-Length")?.parse().ok());
             counters(1, size.unwrap_or(0));
             download(&agent, url, &target, None)?;
         }
@@ -359,7 +409,10 @@ fn run(home: &Path, derived: &str) -> Result<(), String> {
     for i in 0..zip.len() {
         let mut entry = zip.by_index(i).map_err(|e| e.to_string())?;
         let Some(relative) = entry.enclosed_name() else {
-            return Err(format!("derived pack: bad path {}", entry.name()));
+            return Err(format!(
+                "derived pack: bad path {}",
+                entry.name().map_err(|e| e.to_string())?
+            ));
         };
         let target = resources.join(relative);
         if entry.is_dir() {
@@ -373,7 +426,9 @@ fn run(home: &Path, derived: &str) -> Result<(), String> {
         }
         FILES_DONE.store(i + 1, Ordering::Relaxed);
     }
-    if !resources.join("horizon-resources.json").is_file() || !resources.join("facts.json").is_file() {
+    if !resources.join("horizon-resources.json").is_file()
+        || !resources.join("facts.json").is_file()
+    {
         return Err("The derived pack lacks horizon-resources.json or facts.json".into());
     }
     fs::remove_file(resources.join(INCOMPLETE)).map_err(|e| e.to_string())?;
@@ -423,7 +478,10 @@ extern "system" fn Java_dev_horizonlab_horizon_SetupActivity_nativeStart(
         if s.as_ref().is_some_and(|s| s.running) {
             return;
         }
-        *s = Some(Status { running: true, ..Status::default() });
+        *s = Some(Status {
+            running: true,
+            ..Status::default()
+        });
     }
     std::thread::spawn(move || {
         let result = std::panic::catch_unwind(|| run(&home, &url))
@@ -445,7 +503,11 @@ extern "system" fn Java_dev_horizonlab_horizon_SetupActivity_nativeStatus<'a>(
     env: jni::JNIEnv<'a>,
     _class: jni::objects::JClass,
 ) -> jni::sys::jstring {
-    let s = STATUS.lock().unwrap_or_else(|e| e.into_inner()).clone().unwrap_or_default();
+    let s = STATUS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+        .unwrap_or_default();
     let state = if s.running {
         "run"
     } else if s.done {
@@ -465,5 +527,7 @@ extern "system" fn Java_dev_horizonlab_horizon_SetupActivity_nativeStatus<'a>(
         state,
         s.error.replace('\t', " ")
     );
-    env.new_string(text).map(|s| s.into_raw()).unwrap_or(std::ptr::null_mut())
+    env.new_string(text)
+        .map(|s| s.into_raw())
+        .unwrap_or(std::ptr::null_mut())
 }

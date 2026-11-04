@@ -64,7 +64,7 @@ fn android_main(app: AndroidApp) {
     let _ = game::ANDROID_APP.set(app.clone());
     // A panic here is already in the crash report (crash::install). Catch it so the activity is
     // still finished below: a NativeActivity whose loop died shows a dead window otherwise.
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(game::run)) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(game::run_with)) {
         Ok(Err(error)) => {
             log::error!("Horizon: {error}");
             crash::report_error(&home, "client", &*error);
@@ -79,7 +79,7 @@ fn android_main(app: AndroidApp) {
 }
 
 fn configure_device(app: &AndroidApp, home: &std::path::Path) {
-    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+    let result = (|| -> std::result::Result<(), Box<dyn std::error::Error>> {
         // SAFETY: android-activity owns the VM for the lifetime of this app.
         let vm = unsafe { jni::JavaVM::from_raw(app.vm_as_ptr().cast())? };
         let mut env = vm.attach_current_thread()?;

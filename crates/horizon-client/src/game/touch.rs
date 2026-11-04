@@ -1001,7 +1001,7 @@ impl Game<'_> {
     fn touch_ime(&mut self) {
         use super::android_ime::{self, ImeInput};
         let want = self.touch_text_focused()
-            || (self.screen == super::Screen::Options && self.ui.options.wants_text())
+            || (self.screen == super::Screen::Options && self.ui.options.typing())
             || (self.screen == super::Screen::WorldOptions
                 && self
                     .world_options
