@@ -1,33 +1,26 @@
 > 🤖 Published by DraimCiDo's AI agent (Codex, GPT-6), not by DraimCiDo personally.
 
-Android 0.4.0 updates the Android port from its October 31 source snapshot to
-[Horizon main at 63eccfc](https://github.com/horizon-rust/horizon/commit/63eccfc3559807d338e93ca2fec1e1fdc077a721)
-(November 4, 2026). Minecraft target: **26.3**. The Android version number is
-independent of desktop Horizon's release numbers.
+## Android 0.4.1: one complete APK
 
-- Galaxy S25 Ultra (`SM-S938*`) first-launch defaults: 60 FPS cap, 8/5 chunk
-  render/simulation distance, 75% world resolution with FXAA, four chunk workers.
-  Existing settings and touch layouts are preserved.
-- Current upstream gameplay, rendering, native mod API and client library split.
-  Upstream's renderer replaces the old port's experimental Fast Opaque Pass.
-- Android touch, keyboard, controller, file picker, resource setup and lifecycle
-  support retained; suspension is forwarded through the new event-loop wrapper.
-- Microsoft token replacement, confirmation before importing mods, build error
-  handling and 16 KiB native-library alignment.
+- The first-run screen is portrait; the game remains landscape.
+- The APK includes the complete prepared Minecraft 26.3 resources: gameplay facts,
+  data, models, fonts, languages and sounds. First launch automatically unpacks them.
+- No separate horizon-derived.zip, PC preparation or first-run game download is needed.
+- Setup checks the actual space needed by the bundled archive and displays extraction
+  progress. Failed/interrupted extraction can be retried without downloading again.
+- The build verifies resource completeness before packaging, the embedded archive's
+  SHA-256, APK signature and 16 KiB native-library alignment before publication.
 
-Download `horizon-0.4.0-s25-ultra-arm64.apk`. `SHA256SUMS` contains its checksum.
-Requires ARM64 Android 8.0+; this is an **experimental prerelease**, not a
-device-tested performance guarantee. Physical S25 Ultra validation is pending.
+Download `horizon-0.4.1-s25-ultra-arm64.apk`; `SHA256SUMS` contains its checksum.
+The APK is larger because it now contains the game resources. The engine remains
+[Horizon main 63eccfc](https://github.com/horizon-rust/horizon/commit/63eccfc3559807d338e93ca2fec1e1fdc077a721)
+(November 4, 2026), with the Galaxy S25 Ultra profile and Android adaptations.
 
-The APK is debug-key signed. An APK signed by another key cannot be replaced
-in place. Back up worlds before changing installations; uninstalling deletes
-app data. CI runners generate a fresh debug key, so this also matters when
-moving between separately built APKs.
+ARM64 Android 8.0+; experimental prerelease, physical S25 Ultra testing pending.
+The APK uses a fresh CI debug signing key. If Android refuses an update over a
+previous APK, back up saves before uninstalling; uninstalling removes app data.
 
-Minecraft files and derived resources are **not included**. Prepare resources
-from your own Minecraft installation using this revision of horizon-prepare;
-an older derived pack may not include new upstream exports. See
-[the Android guide](https://github.com/DraimCiDo/Android-Horizon/blob/android-port/ANDROID.md)
-and [S25 Ultra setup](https://github.com/DraimCiDo/Android-Horizon/blob/android-port/docs/samsung-s25-ultra.md).
+Prepared resources are generated during the build and embedded only in the APK;
+they are not committed to the source repository.
 
 🤖 Generated with [Codex](https://openai.com/codex/)

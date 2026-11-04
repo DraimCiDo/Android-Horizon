@@ -1,4 +1,4 @@
-//! First run on Android: downloads and prepares the game files on the phone, without a PC or Java.
+//! First run on Android: install complete APK resources offline, or download inputs for developer builds.
 //!
 //! The Mojang files come straight from Mojang (piston-meta / piston-data and
 //! resources.download.minecraft.net), each checked by SHA-1, the client JAR against
@@ -441,6 +441,100 @@ fn jstring(env: &mut jni::JNIEnv, s: &jni::objects::JString) -> String {
     env.get_string(s).map(Into::into).unwrap_or_default()
 }
 
+struct BundledAsset {
+    file: fs::File,
+    offset: u64,
+    length: u64,
+}
+
+/// AssetManager.openFd works because build_apk stores the ZIP without a second
+/// compression layer. detachFd transfers ownership to Rust until copying ends.
+fn bundled_asset(
+    env: &mut jni::JNIEnv,
+    assets: &jni::objects::JObject,
+) -> Result<BundledAsset, String> {
+    use jni::objects::JValue;
+    let result = (|| -> jni::errors::Result<BundledAsset> {
+        let name = env.new_string("horizon-resources.zip")?;
+        let descriptor = env
+            .call_method(
+                assets,
+                "openFd",
+                "(Ljava/lang/String;)Landroid/content/res/AssetFileDescriptor;",
+                &[JValue::Object(&name)],
+            )?
+            .l()?;
+        let offset = env
+            .call_method(&descriptor, "getStartOffset", "()J", &[])?
+            .j()?;
+        let length = env.call_method(&descriptor, "getLength", "()J", &[])?.j()?;
+        if offset < 0 || length < 0 {
+            return Err(jni::errors::Error::NullPtr("invalid bundle bounds"));
+        }
+        let parcel = env
+            .call_method(
+                &descriptor,
+                "getParcelFileDescriptor",
+                "()Landroid/os/ParcelFileDescriptor;",
+                &[],
+            )?
+            .l()?;
+        let fd = env.call_method(&parcel, "detachFd", "()I", &[])?.i()?;
+        if fd < 0 {
+            return Err(jni::errors::Error::NullPtr("invalid bundle descriptor"));
+        }
+        use std::os::fd::FromRawFd;
+        // SAFETY: detachFd gave us a new owned descriptor; File closes it once.
+        let file = unsafe { fs::File::from_raw_fd(fd) };
+        Ok(BundledAsset {
+            file,
+            offset: offset as u64,
+            length: length as u64,
+        })
+    })();
+    result.map_err(|e| format!("APK resources: {e}"))
+}
+
+fn install_bundled(home: &Path, mut asset: BundledAsset) -> Result<(), String> {
+    use std::io::{Seek, SeekFrom};
+    let work = home.join(".horizon-setup");
+    fs::create_dir_all(&work).map_err(|e| e.to_string())?;
+    let zip_path = work.join("bundled.zip");
+    stage("bundle");
+    counters(1, asset.length);
+    asset
+        .file
+        .seek(SeekFrom::Start(asset.offset))
+        .map_err(|e| e.to_string())?;
+    let mut reader = asset.file.take(asset.length);
+    let mut output = fs::File::create(&zip_path).map_err(|e| e.to_string())?;
+    let mut copied = 0u64;
+    let mut buffer = vec![0; 1 << 16];
+    loop {
+        let n = reader.read(&mut buffer).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        output.write_all(&buffer[..n]).map_err(|e| e.to_string())?;
+        copied += n as u64;
+        BYTES_DONE.store(copied, Ordering::Relaxed);
+    }
+    drop(output);
+    if copied != asset.length {
+        return Err("APK resources: incomplete archive".into());
+    }
+    stage("extract");
+    counters(0, 0);
+    let archive = fs::File::open(&zip_path).map_err(|e| e.to_string())?;
+    horizon_prepare::device::install_bundle(archive, &home.join("resources"), &|done, total| {
+        FILES_DONE.store(done, Ordering::Relaxed);
+        FILES_TOTAL.store(total, Ordering::Relaxed);
+    })?;
+    let _ = fs::remove_dir_all(&work);
+    stage("done");
+    Ok(())
+}
+
 /// 1 when the resources under `home` are ready to play.
 #[unsafe(no_mangle)]
 extern "system" fn Java_dev_horizonlab_horizon_SetupActivity_nativeReady(
@@ -470,6 +564,7 @@ extern "system" fn Java_dev_horizonlab_horizon_SetupActivity_nativeStart(
     _class: jni::objects::JClass,
     home: jni::objects::JString,
     url: jni::objects::JString,
+    assets: jni::objects::JObject,
 ) {
     let home = PathBuf::from(jstring(&mut env, &home));
     let url = jstring(&mut env, &url);
@@ -483,9 +578,20 @@ extern "system" fn Java_dev_horizonlab_horizon_SetupActivity_nativeStart(
             ..Status::default()
         });
     }
+    let bundled = if url == "@bundled" {
+        bundled_asset(&mut env, &assets).map(Some)
+    } else {
+        Ok(None)
+    };
+    if bundled.is_err() {
+        let _ = env.exception_clear();
+    }
     std::thread::spawn(move || {
-        let result = std::panic::catch_unwind(|| run(&home, &url))
-            .unwrap_or_else(|_| Err("internal error".into()));
+        let result = std::panic::catch_unwind(|| match bundled? {
+            Some(asset) => install_bundled(&home, asset),
+            None => run(&home, &url),
+        })
+        .unwrap_or_else(|_| Err("internal error".into()));
         if let Err(e) = &result {
             log::error!("setup: {e}");
         }

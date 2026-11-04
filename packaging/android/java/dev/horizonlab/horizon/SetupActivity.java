@@ -30,7 +30,7 @@ public class SetupActivity extends Activity
 
     static native int nativeReady(String home);
     static native String nativeDefaultUrl();
-    static native void nativeStart(String home, String derivedUrl);
+    static native void nativeStart(String home, String derivedUrl, android.content.res.AssetManager assets);
     static native String nativeStatus();
 
     private static final long NEED_BYTES = 1500L * 1024 * 1024;
@@ -45,6 +45,28 @@ public class SetupActivity extends Activity
     private int failures;
     private String lastError = "";
     private Button copyError;
+    private boolean bundled;
+    private long needBytes = NEED_BYTES;
+
+    static boolean hasBundled(android.content.Context c) {
+        try (android.content.res.AssetFileDescriptor ignored = c.getAssets().openFd("horizon-resources.zip")) {
+            return true;
+        } catch (java.io.IOException e) {
+            return false;
+        }
+    }
+
+    private void bundleSize() {
+        try (java.io.InputStream in = getAssets().open("horizon-bundle.json")) {
+            java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
+            byte[] buffer = new byte[4096];
+            for (int n; (n = in.read(buffer)) != -1;) out.write(buffer, 0, n);
+            org.json.JSONObject metadata = new org.json.JSONObject(new String(out.toByteArray(), java.nio.charset.StandardCharsets.UTF_8));
+            needBytes = metadata.getLong("archive_bytes") + metadata.getLong("unpacked_bytes") + (64L << 20);
+        } catch (Exception ignored) {
+            needBytes = NEED_BYTES;
+        }
+    }
 
     static String home(Context c) {
         File dir = c.getExternalFilesDir(null);
@@ -55,13 +77,15 @@ public class SetupActivity extends Activity
 
     /** Whether the derived pack can be found (a build URL or the local zip). */
     private boolean haveDerived() {
-        return !nativeDefaultUrl().isEmpty() || new File(home, "horizon-derived.zip").isFile();
+        return bundled || !nativeDefaultUrl().isEmpty() || new File(home, "horizon-derived.zip").isFile();
     }
 
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         home = home(this);
+        bundled = hasBundled(this);
+        if (bundled) bundleSize();
         if (nativeReady(home) == 1) {
             launch();
             return;
@@ -69,14 +93,16 @@ public class SetupActivity extends Activity
         LinearLayout card = Ui.card(this);
         card.addView(Ui.text(this, "Horizon", 32, Ui.TEXT, true));
         card.addView(Ui.text(this, Ui.t("Первый запуск", "First launch"), 15, Ui.MUTED, false));
-        card.addView(Ui.text(this, Ui.t(
+        card.addView(Ui.text(this, bundled ? Ui.t(
+                "Все файлы игры уже в APK. Сейчас они будут распакованы на телефон; скачивать или искать ZIP не нужно.",
+                "All game files are included in this APK. They will be unpacked on your phone; no download or separate ZIP is needed.") : Ui.t(
                 "Игре нужны файлы Minecraft 26.3. Они скачаются автоматически, около 700 МБ. Лучше подключиться к Wi-Fi.",
                 "The game needs the Minecraft 26.3 files. They will be downloaded automatically, about 700 MB. Wi-Fi is best."),
                 15, Ui.TEXT, false), Ui.gap(this, 12));
         note = Ui.text(this, "", 14, Ui.WARN, false);
         note.setVisibility(View.GONE);
         card.addView(note, Ui.gap(this, 8));
-        button = Ui.button(this, Ui.t("Скачать файлы игры", "Download game files"), true);
+        button = Ui.button(this, bundled ? Ui.t("Подготовить игру", "Prepare game") : Ui.t("Скачать файлы игры", "Download game files"), true);
         button.setOnClickListener(this);
         card.addView(button, Ui.gap(this, 18));
         bar = new Ui.Bar(this);
@@ -118,6 +144,8 @@ public class SetupActivity extends Activity
         }
         if (nativeStatus().contains("\trun\t")) {
             running();
+        } else if (bundled) {
+            confirm();
         }
     }
 
@@ -140,11 +168,13 @@ public class SetupActivity extends Activity
 
     private void confirm() {
         StatFs fs = new StatFs(home);
-        if (fs.getAvailableBytes() < NEED_BYTES) {
-            showNote(Ui.t("Мало места. Нужно около 1,5 ГБ, свободно ", "Not enough space. About 1.5 GB is needed, free: ")
+        if (fs.getAvailableBytes() < needBytes) {
+            showNote(Ui.t("Мало места. Для подготовки нужно ", "Not enough space. Preparation needs ")
+                    + ((needBytes + (1L << 20) - 1) >> 20) + Ui.t(" МБ; свободно ", " MB; free: ")
                     + (fs.getAvailableBytes() >> 20) + Ui.t(" МБ.", " MB."));
             return;
         }
+        if (bundled) { begin(); return; }
         ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         if (cm != null && cm.isActiveNetworkMetered()) {
             new AlertDialog.Builder(this)
@@ -162,7 +192,7 @@ public class SetupActivity extends Activity
     private void begin() {
         Intent service = new Intent(this, SetupService.class);
         service.putExtra("home", home);
-        service.putExtra("url", nativeDefaultUrl());
+        service.putExtra("url", bundled ? "@bundled" : nativeDefaultUrl());
         if (android.os.Build.VERSION.SDK_INT >= 26) {
             startForegroundService(service);
         } else {
@@ -185,6 +215,7 @@ public class SetupActivity extends Activity
     static String stageName(String s) {
         if (s.equals("version") || s.equals("index")) return Ui.t("Подготовка", "Preparing");
         if (s.equals("client")) return Ui.t("Скачивание игры", "Downloading the game");
+        if (s.equals("bundle")) return Ui.t("Подготовка файлов из APK", "Preparing files from APK");
         if (s.equals("extract")) return Ui.t("Распаковка", "Unpacking");
         if (s.equals("assets")) return Ui.t("Звуки, шрифты и языки", "Sounds, fonts and languages");
         if (s.equals("derived")) return Ui.t("Данные Horizon", "Horizon data");

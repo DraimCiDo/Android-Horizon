@@ -26,11 +26,18 @@ rm -rf "$OUT/res" && mkdir -p "$OUT/res"
 "$BT/aapt2" link -o "$OUT/unaligned.apk" --manifest packaging/android/AndroidManifest.xml -I "$PLATFORM" \
   --min-sdk-version 26 --target-sdk-version 35 "$OUT/res/res.zip"
 python3 - "$OUT" <<'PY'
-import sys, zipfile
+import os, sys, zipfile
+from pathlib import Path
 out = sys.argv[1]
 with zipfile.ZipFile(f"{out}/unaligned.apk", "a", zipfile.ZIP_DEFLATED) as z:
     z.write(f"{out}/java/classes.dex", "classes.dex")
     z.write(f"{out}/stage/lib/arm64-v8a/libhorizon.so", "lib/arm64-v8a/libhorizon.so")
+    bundle = Path(os.environ.get('HORIZON_BUNDLE_DIR', f'{out}/bundle'))
+    if (bundle / 'horizon-resources.zip').is_file():
+        for name in ('horizon-resources.zip', 'horizon-bundle.json'):
+            z.write(bundle / name, f'assets/{name}', compress_type=zipfile.ZIP_STORED)
+    elif os.environ.get('HORIZON_REQUIRE_BUNDLE') == '1':
+        raise SystemExit('Complete resource bundle is required for this APK')
 PY
 "$BT/zipalign" -f -p 4 "$OUT/unaligned.apk" "$OUT/aligned.apk"
 if [ -n "${HORIZON_KEYSTORE:-}" ] && [ -f "$HORIZON_KEYSTORE" ]; then

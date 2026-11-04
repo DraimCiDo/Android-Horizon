@@ -56,7 +56,7 @@ public class SetupService extends Service implements Runnable {
         String home = intent != null ? intent.getStringExtra("home") : null;
         String url = intent != null ? intent.getStringExtra("url") : null;
         if (home != null) {
-            SetupActivity.nativeStart(home, url == null ? "" : url);
+            SetupActivity.nativeStart(home, url == null ? "" : url, getAssets());
         }
         handler.removeCallbacks(this);
         handler.post(this);

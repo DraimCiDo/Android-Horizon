@@ -49,8 +49,9 @@ adb install -r target/android/horizon.apk
 
 The native library is linked with 16 KiB segment alignment for compatibility
 with both 4 KiB and 16 KiB Android page sizes. Java compilation errors stop the
-build. Minecraft resources and the derived pack are not bundled: use your own
-prepared resources as described in [ANDROID.md](../ANDROID.md#game-files).
+build. Published 0.4.1+ APKs include the complete game resources. Portrait setup unpacks
+them automatically; no separate ZIP or PC preparation is needed on the phone.
+The release workflow prepares the bundle before building the APK.
 
 ## Device validation still needed
 

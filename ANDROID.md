@@ -2,6 +2,21 @@
 
 Galaxy S25 Ultra: [device profile, APK build and validation](docs/samsung-s25-ultra.md).
 
+
+## Complete APK (0.4.1+)
+
+Published Android APKs now contain the complete prepared game resources. Install
+one APK and open it: portrait setup automatically unpacks the files, then starts
+the landscape game. No separate ZIP, PC or game-file download is required on the
+phone. Setup checks the required free space from the bundle metadata.
+
+The release workflow downloads and verifies pinned build inputs, runs the Java
+exporters with JDK 25 and `horizon-prepare --prepare --complete`, checks the
+prepared folder, and packages it as an uncompressed APK asset. The Java activity
+build still uses JDK 21. Generated resources remain under ignored `.local/` and
+`target/`; never add them to Git. Older instructions below also describe developer
+builds made without a complete embedded resource bundle.
+
 The game runs as a `NativeActivity` (no Java/Kotlin code): `crates/horizon-android` builds
 horizon-client's game (`src/game.rs` + `src/game/`) as `libhorizon.so`, with the entry point
 `crates/horizon-client/src/android_main.rs` instead of `main.rs`. Rendering is wgpu (Vulkan, GLES 3 fallback);
