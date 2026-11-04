@@ -3,6 +3,7 @@
 //! same game; this file only replaces `main` with `android_main`.
 #![cfg(target_os = "android")]
 #![allow(dead_code)]
+mod android_device;
 mod android_msa;
 mod android_setup;
 mod game;
@@ -34,7 +35,10 @@ fn android_main(app: AndroidApp) {
         if let Some(internal) = app.internal_data_path() {
             std::env::set_var("HORIZON_CACHE", internal.join("horizon-cache"));
         }
-        std::env::set_var("TMPDIR", app.internal_data_path().unwrap_or(home.clone()).join("tmp"));
+        std::env::set_var(
+            "TMPDIR",
+            app.internal_data_path().unwrap_or(home.clone()).join("tmp"),
+        );
         // `spikes.txt` in the game folder (a number of milliseconds) turns on HORIZON_SPIKES:
         // frames slower than that log their timings, without a debug build.
         if let Ok(text) = std::fs::read_to_string(home.join("spikes.txt"))
@@ -46,8 +50,13 @@ fn android_main(app: AndroidApp) {
     let _ = std::fs::create_dir_all(home.join("..").join("cache"));
     let _ = std::env::set_current_dir(&home);
     logging::init(&home, "Render thread");
-    log::info!("Horizon {} (Android) home {}", crash::version(), home.display());
+    log::info!(
+        "Horizon {} (Android) home {}",
+        crash::version(),
+        home.display()
+    );
     crash::install(home.clone(), "client");
+    configure_device(&app, &home);
     if let Some(internal) = app.internal_data_path() {
         apply_vulkan_driver(&internal);
         android_msa::prepare(&internal, &home);
@@ -69,6 +78,31 @@ fn android_main(app: AndroidApp) {
     game::finish_activity();
 }
 
+fn configure_device(app: &AndroidApp, home: &std::path::Path) {
+    let result = (|| -> Result<(), Box<dyn std::error::Error>> {
+        // SAFETY: android-activity owns the VM for the lifetime of this app.
+        let vm = unsafe { jni::JavaVM::from_raw(app.vm_as_ptr().cast())? };
+        let mut env = vm.attach_current_thread()?;
+        let manufacturer = env
+            .get_static_field("android/os/Build", "MANUFACTURER", "Ljava/lang/String;")?
+            .l()?;
+        let model = env
+            .get_static_field("android/os/Build", "MODEL", "Ljava/lang/String;")?
+            .l()?;
+        let manufacturer: String = env
+            .get_string(&jni::objects::JString::from(manufacturer))?
+            .into();
+        let model: String = env.get_string(&jni::objects::JString::from(model))?.into();
+        if android_device::configure(home, &manufacturer, &model)? {
+            log::info!("Horizon: Galaxy S25 Ultra profile available; existing settings preserved");
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        log::warn!("Horizon: could not prepare device defaults: {error}");
+    }
+}
+
 /// `vulkan-driver.txt` in internal storage (Profile -> Graphics driver, experimental) names a
 /// custom Vulkan driver `.so` (Turnip). The renderer opens it itself and goes back to the system
 /// driver when it can't (wgpu-hal `vulkan/instance.rs`).
@@ -82,7 +116,9 @@ fn apply_vulkan_driver(internal: &std::path::Path) {
     if pending.exists() {
         let _ = std::fs::remove_file(&pending);
         if choice.exists() {
-            log::warn!("Horizon: the custom Vulkan driver did not start last time; back to the system driver");
+            log::warn!(
+                "Horizon: the custom Vulkan driver did not start last time; back to the system driver"
+            );
             let _ = std::fs::rename(&choice, internal.join("vulkan-driver.failed"));
             return;
         }

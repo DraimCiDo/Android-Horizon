@@ -1,5 +1,7 @@
 # Horizon on Android (arm64, experimental)
 
+Galaxy S25 Ultra: [device profile, APK build and validation](docs/samsung-s25-ultra.md).
+
 The game runs as a `NativeActivity` (no Java/Kotlin code): `crates/horizon-android` builds
 horizon-client's game (`src/game.rs` + `src/game/`) as `libhorizon.so`, with the entry point
 `crates/horizon-client/src/android_main.rs` instead of `main.rs`. Rendering is wgpu (Vulkan, GLES 3 fallback);

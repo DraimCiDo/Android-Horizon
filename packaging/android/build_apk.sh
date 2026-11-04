@@ -10,13 +10,16 @@ PLATFORM="$ANDROID_HOME/platforms/android-35/android.jar"
 PROFILE="${PROFILE:-fast}"
 OUT=target/android
 rm -rf "$OUT/stage" && mkdir -p "$OUT/stage/lib"
-cargo ndk -t arm64-v8a -P 26 -o "$OUT/jni" build -p horizon-android --profile "$PROFILE" ${CARGO_FLAGS:-}
+# Android 15+ also supports 16 KiB memory pages. Keep ELF LOAD segments usable
+# on both 4 KiB and 16 KiB devices (NDK r27 still needs this explicit opt-in).
+RUSTFLAGS="${RUSTFLAGS:-} -C link-arg=-Wl,-z,max-page-size=16384" \
+  cargo ndk -t arm64-v8a -P 26 -o "$OUT/jni" build -p horizon-android --profile "$PROFILE" ${CARGO_FLAGS:-}
 mkdir -p "$OUT/stage/lib/arm64-v8a"
 "$NDK"/toolchains/llvm/prebuilt/*/bin/llvm-strip -o "$OUT/stage/lib/arm64-v8a/libhorizon.so" "$OUT/jni/arm64-v8a/libhorizon.so"
 # HorizonActivity (the soft keyboard bridge) -> classes.dex.
 rm -rf "$OUT/java" && mkdir -p "$OUT/java/classes"
 "${JAVAC:-javac}" --release 8 -nowarn -classpath "$PLATFORM" -d "$OUT/java/classes" \
-  $(find packaging/android/java -name '*.java') 2>&1 | grep -v "^warning\|^Note\|^1 warning" || true
+  $(find packaging/android/java -name '*.java')
 "$BT/d8" --min-api 26 --lib "$PLATFORM" --output "$OUT/java" $(find "$OUT/java/classes" -name '*.class')
 rm -rf "$OUT/res" && mkdir -p "$OUT/res"
 "$BT/aapt2" compile --dir packaging/android/res -o "$OUT/res/res.zip"

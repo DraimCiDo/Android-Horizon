@@ -12,6 +12,14 @@ import zipfile
 from tools import check_public_tree, lab
 
 
+class AndroidPublicTreeTests(unittest.TestCase):
+    def test_only_original_android_sources_are_allowed(self):
+        for path in check_public_tree.ANDROID_SOURCES:
+            self.assertFalse(check_public_tree.prohibited(path), path)
+        for name in ("net/minecraft/Client.java", "dev/horizonlab/horizon/Decompiled.java"):
+            self.assertTrue(check_public_tree.prohibited("packaging/android/java/" + name))
+
+
 def minimal_class(source="Example.java"):
     # A valid class-file structure with no fields/methods and one SourceFile attribute.
     def utf8(value):

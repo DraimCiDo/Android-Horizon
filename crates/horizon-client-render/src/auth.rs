@@ -5,7 +5,7 @@
 //! process's memory: it is never logged, printed or written anywhere.
 use std::{
     path::Path,
-    sync::{Arc, Mutex, OnceLock},
+    sync::{Arc, Mutex, RwLock},
     time::{Duration, SystemTime},
 };
 
@@ -103,14 +103,19 @@ impl AuthSession {
     }
 }
 
-static CURRENT: OnceLock<Arc<AuthSession>> = OnceLock::new();
+static CURRENT: RwLock<Option<Arc<AuthSession>>> = RwLock::new(None);
 
-/// The account this game was started with (set once at start).
+/// Set the account at startup, or replace its token after an Android refresh.
 pub fn set_current(session: AuthSession) {
-    let _ = CURRENT.set(Arc::new(session));
+    *CURRENT
+        .write()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(Arc::new(session));
 }
 pub fn current() -> Option<Arc<AuthSession>> {
-    CURRENT.get().cloned()
+    CURRENT
+        .read()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
 }
 
 /// Why joining a server through the session service failed, like the
@@ -358,6 +363,19 @@ mod tests {
     use super::*;
 
     const UUID: u128 = 0x069a79f444e94726a5befca90e38aaf5;
+
+    #[test]
+    fn refreshed_token_replaces_current_session_without_invalidating_readers() {
+        let previous = CURRENT.write().unwrap().take();
+        set_current(AuthSession::new("Player", UUID, "old-token"));
+        let in_flight = current().unwrap();
+        set_current(AuthSession::new("Player", UUID, "new-token"));
+        let refreshed = current().unwrap();
+        assert_eq!(refreshed.access_token, "new-token");
+        assert_eq!(in_flight.access_token, "old-token");
+        assert_eq!(refreshed.uuid, in_flight.uuid);
+        *CURRENT.write().unwrap() = previous;
+    }
 
     fn write(dir: &Path, text: &str, mode: u32) -> std::path::PathBuf {
         let path = dir.join("session.json");

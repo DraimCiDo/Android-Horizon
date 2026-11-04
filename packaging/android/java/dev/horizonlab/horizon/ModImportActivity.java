@@ -1,6 +1,7 @@
 package dev.horizonlab.horizon;
 
 import android.app.Activity;
+import android.app.AlertDialog;
 import android.content.Intent;
 import android.database.Cursor;
 import android.net.Uri;
@@ -31,8 +32,7 @@ public class ModImportActivity extends Activity {
             uri = intent.getData();
         }
         if (uri != null) {
-            install(uri);
-            finish();
+            confirmInstall(uri);
             return;
         }
         Intent pick = new Intent(Intent.ACTION_OPEN_DOCUMENT);
@@ -44,8 +44,26 @@ public class ModImportActivity extends Activity {
     @Override
     protected void onActivityResult(int request, int result, Intent data) {
         super.onActivityResult(request, result, data);
-        if (result == RESULT_OK && data != null && data.getData() != null) install(data.getData());
-        finish();
+        if (result == RESULT_OK && data != null && data.getData() != null) {
+            confirmInstall(data.getData());
+        } else {
+            finish();
+        }
+    }
+
+    private void confirmInstall(final Uri uri) {
+        new AlertDialog.Builder(this)
+                .setTitle(Ui.t("Установить мод?", "Install mod?"))
+                .setMessage(displayName(uri) + "\n\n" + Ui.t(
+                        "Нативный мод выполняет код с правами игры, включая доступ к файлам и аккаунту. Устанавливайте только моды, автору которых доверяете. Существующий файл с тем же именем будет заменён.",
+                        "A native mod runs code with the game's permissions, including access to files and your account. Install only mods whose author you trust. An existing file with the same name will be replaced."))
+                .setPositiveButton(Ui.t("Установить", "Install"), (dialog, which) -> {
+                    install(uri);
+                    finish();
+                })
+                .setNegativeButton(Ui.t("Отмена", "Cancel"), (dialog, which) -> finish())
+                .setOnCancelListener(dialog -> finish())
+                .show();
     }
 
     private void install(Uri uri) {
@@ -76,8 +94,9 @@ public class ModImportActivity extends Activity {
             return;
         }
         if (!part.renameTo(out)) {
-            out.delete();
-            part.renameTo(out);
+            part.delete();
+            toast(Ui.t("Не удалось сохранить мод.", "Could not save the mod."));
+            return;
         }
         toast(Ui.t("Мод установлен: ", "Mod installed: ") + name
                 + Ui.t(". Перезапустите игру; он в Настройки > Моды.", ". Restart the game; it is in Options > Mods."));
