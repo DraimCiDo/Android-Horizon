@@ -1,0 +1,7 @@
+fn main() {
+    let root =
+        std::path::PathBuf::from(std::env::var_os("CARGO_MANIFEST_DIR").unwrap()).join("../..");
+    let out = std::path::PathBuf::from(std::env::var_os("OUT_DIR").unwrap());
+    horizon_mod_api_gen::generate(&root, &out, horizon_mod_api_gen::Target::Client)
+        .expect("generating Android mod API");
+}

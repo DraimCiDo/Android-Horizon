@@ -63,3 +63,14 @@ Logs are in the game's `logs/latest.log`; crash reports are in `crash-reports/`.
 The branch also requires confirmation before installing an externally supplied
 mod, preserves an existing mod if replacement fails, and allows a renewed
 Microsoft session to replace the token held by the running game.
+
+## Upstream synchronization
+
+Android 0.4.0 incorporates Horizon main at `63eccfc3559807d338e93ca2fec1e1fdc077a721`
+(November 4, 2026). The current gameplay/client-library split and mod API are
+compiled by the Android crate too. The old experimental Fast Opaque Pass was
+replaced by the current upstream renderer; GPU occlusion culling remains opt-in
+on Android. Exact source provenance is recorded in `packaging/android/upstream.json`.
+
+Tagged `android-*` builds verify the APK signature and ELF alignment before
+publishing the APK and `SHA256SUMS` to GitHub Releases.

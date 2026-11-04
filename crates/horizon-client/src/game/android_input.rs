@@ -10,7 +10,9 @@
 //! touch controls can hide.
 use horizon_client::gamepad::{Button, PadState};
 use std::sync::Mutex;
-use winit::platform::android::activity::input::{Axis, InputEvent, KeyAction, Keycode, MotionAction};
+use winit::platform::android::activity::input::{
+    Axis, InputEvent, KeyAction, Keycode, MotionAction,
+};
 
 /// `InputDevice.SOURCE_*` bits.
 const SOURCE_KEYBOARD: u32 = 0x0000_0101;
@@ -77,7 +79,9 @@ static SHARED: Mutex<Shared> = Mutex::new(Shared {
 });
 
 fn shared() -> std::sync::MutexGuard<'static, Shared> {
-    SHARED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    SHARED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 /// Route input events through [`filter`]; called once before the event loop starts.
@@ -98,7 +102,12 @@ pub(super) fn pad_state() -> PadState {
             triggers[i] = 1.0;
         }
     }
-    PadState { buttons: s.keys | s.hat, left: s.left, right: [right[0], -right[1]], triggers }
+    PadState {
+        buttons: s.keys | s.hat,
+        left: s.left,
+        right: [right[0], -right[1]],
+        triggers,
+    }
 }
 
 /// Everything let go (the app went to the background, a controller went away).
@@ -211,7 +220,13 @@ fn filter(event: &InputEvent<'_>) -> bool {
                 || has(source, SOURCE_JOYSTICK)
                 || is_gamepad_key(code)
                 || (source == SOURCE_DPAD
-                    && matches!(code, Keycode::DpadUp | Keycode::DpadDown | Keycode::DpadLeft | Keycode::DpadRight));
+                    && matches!(
+                        code,
+                        Keycode::DpadUp
+                            | Keycode::DpadDown
+                            | Keycode::DpadLeft
+                            | Keycode::DpadRight
+                    ));
             if from_pad {
                 let Some(button) = pad_button(code) else {
                     // Home/Mode and the rest stay with the system.
@@ -232,7 +247,15 @@ fn filter(event: &InputEvent<'_>) -> bool {
                 return true;
             }
             if has(source, SOURCE_KEYBOARD)
-                && !matches!(code, Keycode::Back | Keycode::Home | Keycode::VolumeUp | Keycode::VolumeDown | Keycode::VolumeMute | Keycode::Power)
+                && !matches!(
+                    code,
+                    Keycode::Back
+                        | Keycode::Home
+                        | Keycode::VolumeUp
+                        | Keycode::VolumeDown
+                        | Keycode::VolumeMute
+                        | Keycode::Power
+                )
             {
                 shared().keyboard_used = true;
             }
@@ -247,7 +270,11 @@ fn filter(event: &InputEvent<'_>) -> bool {
                 let p = motion.pointer_at_index(0);
                 let a = |axis| {
                     let v = p.axis_value(axis);
-                    if v.is_finite() { v.clamp(-1.0, 1.0) } else { 0.0 }
+                    if v.is_finite() {
+                        v.clamp(-1.0, 1.0)
+                    } else {
+                        0.0
+                    }
                 };
                 let mut s = shared();
                 s.left = [a(Axis::X), -a(Axis::Y)];
@@ -256,7 +283,10 @@ fn filter(event: &InputEvent<'_>) -> bool {
                 if s.rx_ry[0].abs() > 0.3 || s.rx_ry[1].abs() > 0.3 {
                     s.rx_ry_stick = true;
                 }
-                let (lt, rt) = (a(Axis::Ltrigger).max(a(Axis::Brake)), a(Axis::Rtrigger).max(a(Axis::Gas)));
+                let (lt, rt) = (
+                    a(Axis::Ltrigger).max(a(Axis::Brake)),
+                    a(Axis::Rtrigger).max(a(Axis::Gas)),
+                );
                 if lt > 0.05 || rt > 0.05 {
                     s.trigger_axes = true;
                 }
@@ -290,14 +320,18 @@ fn filter(event: &InputEvent<'_>) -> bool {
                         s.mouse.push(MouseInput::Wheel(w));
                     }
                 }
-                MotionAction::Move | MotionAction::HoverMove | MotionAction::Down | MotionAction::Up => {
+                MotionAction::Move
+                | MotionAction::HoverMove
+                | MotionAction::Down
+                | MotionAction::Up => {
                     if relative {
                         let d = [f64::from(p.x()), f64::from(p.y())];
                         if d != [0.0, 0.0] {
                             s.mouse.push(MouseInput::Delta(d));
                         }
                     } else {
-                        s.mouse.push(MouseInput::Move([f64::from(p.x()), f64::from(p.y())]));
+                        s.mouse
+                            .push(MouseInput::Move([f64::from(p.x()), f64::from(p.y())]));
                     }
                 }
                 _ => {}
@@ -335,11 +369,12 @@ impl super::Game<'_> {
     /// game as the window's own would, the pointer is captured while playing with
     /// a mouse, and the touch controls hide while a controller, keyboard or mouse
     /// plays (a touch brings them back, `touch_event`).
-    pub(super) fn android_input_frame(&mut self, event_loop: &winit::event_loop::ActiveEventLoop) {
+    pub(super) fn android_input_frame(&mut self, event_loop: &dyn super::event_loop::EventLoopCtl) {
         use winit::{
-            application::ApplicationHandler,
             dpi::PhysicalPosition,
-            event::{DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent},
+            event::{
+                DeviceId, ElementState, MouseButton, MouseScrollDelta, TouchPhase, WindowEvent,
+            },
         };
         let (keyboard, mouse) = take_used();
         if keyboard || mouse {
@@ -371,7 +406,11 @@ impl super::Game<'_> {
                 }
                 MouseInput::Button(i, down) => WindowEvent::MouseInput {
                     device_id,
-                    state: if down { ElementState::Pressed } else { ElementState::Released },
+                    state: if down {
+                        ElementState::Pressed
+                    } else {
+                        ElementState::Released
+                    },
                     button: match i {
                         0 => MouseButton::Left,
                         1 => MouseButton::Right,
@@ -386,10 +425,16 @@ impl super::Game<'_> {
                     phase: TouchPhase::Moved,
                 },
             };
-            self.window_event(event_loop, window_id, event);
+            self.handle_window_event(
+                event_loop,
+                window_id,
+                event,
+                super::input_trace::InputOrigin::User,
+            );
         }
         // The pointer is captured for turning the view, and let go in menus.
-        let capture = self.touch.mouse && self.focused && self.player.is_some() && !self.pad_in_menu();
+        let capture =
+            self.touch.mouse && self.focused && self.player.is_some() && !self.pad_in_menu();
         if self.touch.pointer_captured != Some(capture) {
             self.touch.pointer_captured = Some(capture);
             super::android_ime::pointer_capture(capture);

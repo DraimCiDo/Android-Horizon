@@ -267,6 +267,11 @@ impl MobWorld<'_> {
         if self.daylight { 0 } else { 11 }
     }
     pub fn target_info(&self, who: Who) -> Option<TargetInfo> {
+        if let Some((id, target)) = self.dragon
+            && who == Who::Mob(id)
+        {
+            return Some(target);
+        }
         match who {
             Who::Player => self.player.as_ref().map(|p| TargetInfo {
                 position: p.position,
@@ -404,27 +409,50 @@ pub(crate) fn with_built_test_world(
     build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
     f: impl FnOnce(&MobWorld<'_>, &super::MobTypes),
 ) -> bool {
+    with_built_test_world_rules(others, true, build, f)
+}
+/// `with_built_test_world` with the `mob_griefing` game rule the world reports.
+#[cfg(test)]
+pub(crate) fn with_built_test_world_rules(
+    others: &[Seen],
+    mob_griefing: bool,
+    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
+    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes),
+) -> bool {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../.local/horizon-client")
         .join(horizon_core::VANILLA_VERSION);
+    with_resource_test_world(&root, others, mob_griefing, build, f)
+}
+/// The same mob world loaded from a content mod's resource root.
+#[cfg(test)]
+pub(crate) fn with_resource_test_world(
+    root: &std::path::Path,
+    others: &[Seen],
+    mob_griefing: bool,
+    build: impl FnOnce(&mut crate::world::World, &horizon_world::registry::BlockRegistry),
+    f: impl FnOnce(&MobWorld<'_>, &super::MobTypes),
+) -> bool {
     if !root.join("entity-types.json").exists() || !root.join("movement-properties.nbt").exists() {
         return false;
     }
-    let assets = crate::assets::Assets::load(&root).unwrap();
+    let assets = crate::assets::Assets::load(root).unwrap();
     let registry = assets.registry;
-    let facts = BlockFacts::load(&root, registry).unwrap();
-    let motion = crate::motion::MotionResources::load(&root, &assets).unwrap();
-    let data = super::MobData::load(&root, &facts);
-    let types = super::MobTypes::load(&root).unwrap();
-    let biomes = crate::biome::Biomes::load(&root).unwrap();
+    let facts = BlockFacts::load(root, registry).unwrap();
+    let motion = crate::motion::MotionResources::load(root, &assets).unwrap();
+    let data = super::MobData::load(root, &facts);
+    let types = super::MobTypes::load(root).unwrap();
+    let biomes = crate::biome::Biomes::load(root).unwrap();
     let items = crate::items::Items::load(
-        &root,
+        root,
         registry,
         &facts,
         &horizon_world::loot::PackOverlay::NONE,
     )
     .unwrap();
-    let collision = crate::collisions::load(&root, registry).unwrap();
+    let collision = std::sync::Arc::new(crate::collisions::load(root, registry).unwrap());
+    let suffocation =
+        crate::mobs::suffocation::bind(collision.clone(), &motion.causes_suffocation).unwrap();
     let air = registry.default_state("minecraft:air").unwrap();
     let mut world = crate::world::World::new(air, 0);
     build(&mut world, registry);
@@ -437,13 +465,17 @@ pub(crate) fn with_built_test_world(
         fluid_tables: &motion.fluids,
         movement: &motion.blocks,
         collision: &collision,
+        suffocation: &suffocation,
         data: &data,
         player: None,
+        controlling_player_movement: None,
         nearest_player: None,
         others,
+        dragon: None,
         leash_boats: &[],
         others_grid: None,
         others_index: None,
+        others_villagers: None,
         daylight: true,
         monsters_burn: false,
         game_time: 1000,
@@ -452,8 +484,10 @@ pub(crate) fn with_built_test_world(
         thundering: false,
         nether: false,
         block_tags: &items.block_tags,
+        landing: &motion.landing,
         biomes: &biomes,
-        mob_griefing: true,
+        mob_griefing,
+        universal_anger: false,
         mob_drops: true,
         max_entity_cramming: 24,
         difficulty: super::spawning::LocalDifficulty::new(2, 18000, 0, 0.0),
@@ -462,6 +496,8 @@ pub(crate) fn with_built_test_world(
         sea_level: 63,
         items: Some(&items),
         lid_openers: &lid_openers,
+        mod_effects: None,
+        border: None,
     };
     f(&w, &types);
     true
@@ -502,6 +538,7 @@ pub(crate) fn test_player(position: Vec3) -> super::PlayerView {
         sleeping: false,
         sleep_timer: 0,
         passenger: false,
+        riding_vehicle: None,
         vehicle: None,
     }
 }

@@ -50,8 +50,8 @@ and some are waiting for Ludovic:
   untrusted, with attachments as plain links. Text that looks aimed at an AI (talking to "the AI", asking to run
   commands, asking for passwords or keys, linking to scripts, hidden characters) is marked **suspicious**, and the
   agent coordinating the others sees the mark.
-- **`verify` always runs.** Labels no longer start the checks, and the required `verify` job runs `always()` and fails
-  unless the jobs it gathers passed, so the only `verify` a change can have is one that ran. Main requires it, from GitHub Actions only, for everyone,
+- **`verify` always runs.** Labels no longer start the checks, and the required `verify` job has no condition, so
+  the only `verify` a change can have is one that ran. Main requires it, from GitHub Actions only, for everyone,
   admins included.
 - **Checked before it is published.** Every release is published as the latest, which launchers and servers
   install by themselves, so the release run publishes it only after its smoke test passed (the game started and
@@ -99,9 +99,10 @@ and some are waiting for Ludovic:
   (#1024), which removes anything a pull request left in the work folder by accident, but
   not a deliberate attack. The protection is review: only agents and maintainers push to this repository, and a
   maintainer reads a fork's change before labelling it.
-- **The first install** with `install.sh` / `install.ps1` checks the checksum GitHub publishes, not the
-  signature: verifying Ed25519 signatures needs OpenSSL 3, which macOS doesn't ship. Every update after that
-  checks the signature.
+- **The first install** with `install.sh` checks the signature when OpenSSL 3 is installed: it verifies
+  `SHA256SUMS.sig` against the release key built into the script, then the archive against `SHA256SUMS`. With
+  an older OpenSSL, LibreSSL (what macOS ships) or none, it says so and checks only the SHA-256 GitHub
+  publishes. `install.ps1` still checks only that SHA-256. Every update after that checks the signature.
 
 ## Reporting a security problem
 

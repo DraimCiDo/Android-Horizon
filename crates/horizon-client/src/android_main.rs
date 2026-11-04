@@ -1,14 +1,14 @@
-//! Horizon on Android: the crate root of `horizon-android` (a NativeActivity
-//! cdylib, ANDROID.md). It sits beside `main.rs` so `mod game;` compiles the
-//! same game; this file only replaces `main` with `android_main`.
+//! Android NativeActivity entry point over the current Horizon gameplay and mod API.
 #![cfg(target_os = "android")]
 #![allow(dead_code)]
 mod android_device;
 mod android_msa;
 mod android_setup;
-mod game;
+extern crate self as horizon_client;
+pub use horizon_client_lib::*;
+pub mod game;
+pub mod mod_api;
 
-use horizon_client::{crash, logging};
 use winit::platform::android::activity::AndroidApp;
 
 static MOD_API_LEVEL: [u8; 27] = horizon_mods::api_level::MARK;

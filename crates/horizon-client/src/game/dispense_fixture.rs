@@ -5,7 +5,7 @@
 //! changed in the format of `VanillaDispenserOracle`.
 use super::{
     Game,
-    dispenser::{Slot, body_in_head, mob_set_slot, mob_slot_item},
+    dispenser::{Slot, mob_set_slot, mob_slot_item},
 };
 use horizon_client::{
     Result,
@@ -123,7 +123,7 @@ impl Game<'_> {
     fn fixture_reset(&mut self, seed: i64) {
         self.world = World::new(self.res.facts().air, seed);
         // The oracle level is plains everywhere (bone meal's flowers, freezing).
-        let plains = u32::from(self.res.biomes().id("minecraft:plains"));
+        let plains = u32::from(world_biomes!(self).id("minecraft:plains"));
         for cx in -2..=2 {
             for cz in -2..=2 {
                 let mut chunk = Chunk::empty(cx, cz);
@@ -357,7 +357,7 @@ impl Game<'_> {
         for p in containers {
             let entity = &self.world.block_entities[&p];
             let single = match entity {
-                BlockEntity::Jukebox(j) => std::slice::from_ref(&j.record),
+                BlockEntity::Jukebox(j) => &j.items,
                 _ => entity.slots(),
             };
             for (i, slot) in single.iter().enumerate() {
@@ -431,7 +431,16 @@ impl Game<'_> {
             out.push(self.fixture_describe(i, t));
         }
         let log = LOG.with(|log| log.borrow_mut().take()).unwrap_or_default();
+        // LevelEventHandler's lava fizz (1501): the client plays it from the
+        // level event, so it is not captured as a shared sound (#7652).
+        let fizzes: Vec<String> = log
+            .iter()
+            .filter_map(|line| line.strip_prefix("L 1501 "))
+            .filter_map(|rest| rest.split(' ').next())
+            .map(|pos| format!("S {pos} minecraft:block.lava.extinguish"))
+            .collect();
         out.extend(log);
+        out.extend(fizzes);
         for (sound, at, _, _) in self.audio.capture.take().unwrap_or_default() {
             out.push(format!("S {} {sound}", floor_pos(at)));
         }
@@ -744,7 +753,7 @@ impl Game<'_> {
         let jukebox =
             &*self.res.facts().get(self.world.block(p.0, p.1, p.2)).name == "minecraft:jukebox";
         match self.world.block_entities.get_mut(&p) {
-            Some(BlockEntity::Jukebox(j)) => j.record = stack,
+            Some(BlockEntity::Jukebox(j)) => j.items[0] = stack,
             Some(BlockEntity::Lectern(l)) => l.book = stack,
             Some(BlockEntity::Campfire(c)) => {
                 if let Some(cell) = c.items.get_mut(slot) {
@@ -761,7 +770,7 @@ impl Game<'_> {
                 self.world.block_entities.insert(
                     p,
                     BlockEntity::Jukebox(horizon_client::containers::Jukebox {
-                        record: stack,
+                        items: [stack],
                         ticks: 0,
                         playing: false,
                     }),
@@ -936,6 +945,7 @@ impl Game<'_> {
             &mut mob.extra.main_hand,
             &mut mob.extra.off_hand,
             &mut mob.extra.head,
+            &mut mob.extra.body,
             &mut mob.extra.chest,
             &mut mob.extra.legs,
             &mut mob.extra.feet,
@@ -951,8 +961,8 @@ impl Game<'_> {
         if flag("baby") && ageable {
             mob.extra.age = -24000;
         }
-        let tamable =
-            body_in_head(s) || matches!(s, Species::Cat | Species::Parrot | Species::Ocelot);
+        let tamable = horizon_client::mobs::drops::body_slot_species(s)
+            || matches!(s, Species::Cat | Species::Parrot | Species::Ocelot);
         if flag("tame") && tamable {
             mob.extra.tame = true;
         }

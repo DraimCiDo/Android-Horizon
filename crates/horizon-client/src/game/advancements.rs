@@ -4,12 +4,13 @@
 use super::{Dim, Game};
 use horizon_client::{
     advancements::{self as adv, EntityView, Frame, ItemView, Progress, Tree},
-    hud::HudBatch,
+    hud::{HudBatch, rgba},
     items::ItemStack,
     text::{self, Style, Text},
     toasts::Slide,
 };
 use horizon_core::geometry::Vec3;
+use horizon_protocol::packets::play::Clientbound as C;
 use serde_json::Value;
 use std::{
     collections::{BTreeMap, BTreeSet, VecDeque},
@@ -136,6 +137,11 @@ impl adv::World for View<'_, '_> {
     fn dimension(&self) -> &str {
         self.0.dim.id()
     }
+    /// `WeatherCheck.test`'s level queries, using dimension-aware effective levels.
+    fn weather(&self) -> (bool, bool) {
+        let (rain, thunder) = self.0.weather_levels(1.0);
+        (f64::from(rain) > 0.2, f64::from(thunder) > 0.9)
+    }
     fn biome(&self, p: [i32; 3]) -> String {
         self.0
             .world
@@ -239,6 +245,21 @@ impl Game<'_> {
     pub(super) fn loot_item_filter(&self, predicate: &Value, s: &ItemStack) -> bool {
         adv::item(predicate, &item_view(s), &View(self))
     }
+    /// `BaseContainerBlockEntity.canOpen`: whether the `lock` of the block
+    /// entity at `key` keeps a player with this main hand out (`LockCode`).
+    pub(super) fn container_locked_for(
+        &self,
+        key: (i32, i32, i32),
+        spectator: bool,
+        hand: Option<&ItemStack>,
+    ) -> bool {
+        let Some(lock) = self.world.block_lock(key) else {
+            return false;
+        };
+        let lock = horizon_client::item_render::tag_json(lock);
+        let hand = hand.map(item_view);
+        !adv::can_unlock(&lock, spectator, hand.as_ref(), &View(self))
+    }
 }
 pub(super) fn item_view(s: &ItemStack) -> ItemView {
     ItemView {
@@ -311,12 +332,19 @@ impl Game<'_> {
             return;
         }
         let data = self.options.resources.join("data");
-        // The world's packs' advancements go over the game's own.
-        let files = super::functions::content_overlay(
-            &self.world_root,
-            &self.options.resources,
-            self.cmds.vanilla_disabled,
-        );
+        // The world's packs' advancements go over the game's own, and a
+        // native mod's contributed files are already among them: the tables
+        // were built for this open (`build_world_tables`), so the hook is
+        // asked once, not again here.
+        let files = match &self.world_tables {
+            Some(tables) => tables.files.clone(),
+            None => super::functions::content_overlay(
+                &self.world_root,
+                &self.options.resources,
+                self.cmds.vanilla_disabled,
+                &self.level.enabled_features,
+            ),
+        };
         self.adv.pending_tree = std::thread::Builder::new()
             .name("horizon-advancements".into())
             .spawn(move || Tree::shared(&data, &horizon_world::loot::PackOverlay { files: &files }))
@@ -370,6 +398,27 @@ impl Game<'_> {
                 .find(|m| m.id == id)
                 .map(|m| self.mob_entity(m))
                 .unwrap_or_default(),
+            // A server's player: what its last `ServerboundPlayerInputPacket`
+            // held (shift 32) and its game mode.
+            Target::Guest(conn) if self.command_guest(conn).is_some() => {
+                let g = self.command_guest(conn).expect("checked");
+                EntityView {
+                    kind: self.target_type(t),
+                    position: g.position,
+                    sneaking: g.sneaking,
+                    input_sneak: g.input & 32 != 0,
+                    gamemode: Some(
+                        match g.game_mode {
+                            1 => "creative",
+                            2 => "adventure",
+                            3 => "spectator",
+                            _ => "survival",
+                        }
+                        .to_owned(),
+                    ),
+                    ..EntityView::default()
+                }
+            }
             other => EntityView {
                 kind: self.target_type(other),
                 position: self.target_position(other).unwrap_or_default(),
@@ -395,7 +444,18 @@ impl Game<'_> {
             &View(self),
         )
     }
+    /// The player as a command's predicates see it: with what it looks at.
     pub(super) fn player_entity(&self) -> EntityView {
+        self.player_entity_looking(true)
+    }
+    /// [`Self::player_entity`] for `trigger`'s criteria: what the player
+    /// looks at only when one of them may ask (a ray against every entity
+    /// otherwise).
+    pub(super) fn player_entity_for(&self, trigger: &str) -> EntityView {
+        self.player_entity_looking(self.adv.tree.may_look(trigger))
+    }
+    /// The player as predicates see it, with what it looks at when `looking`.
+    pub(super) fn player_entity_looking(&self, looking: bool) -> EntityView {
         let Some(p) = self.player.as_ref() else {
             return EntityView::default();
         };
@@ -420,7 +480,11 @@ impl Game<'_> {
         EntityView {
             kind: "minecraft:player".into(),
             position: [p.position.x, p.position.y, p.position.z],
+            // Entity.isOnFire on a server: remainingFireTicks (players aren't fire immune).
+            on_fire: p.fire_ticks > 0,
             sneaking: p.pose == horizon_client::pose::Pose::Crouching,
+            // Input.shift: the held key, as `BlockItem.place`'s sneaking reads it.
+            input_sneak: self.keys.contains(&winit::keyboard::KeyCode::ShiftLeft),
             sprinting: p.sprinting,
             swimming: p.pose == horizon_client::pose::Pose::Swimming,
             flying: p.flying,
@@ -438,6 +502,11 @@ impl Game<'_> {
                 })
                 .collect(),
             gamemode: Some(self.mode.name().to_owned()),
+            // Vanilla looks for it inside PlayerPredicate.matches whatever the
+            // trigger; skipped for a trigger whose criteria can't ask.
+            looking_at: looking
+                .then(|| self.looking_at_entity().map(Box::new))
+                .flatten(),
             ..Default::default()
         }
     }
@@ -484,22 +553,18 @@ impl Game<'_> {
             i.as_ref().map(|id| item_view(&ItemStack::new(id, 1)))
         };
         let mut equipment: [Option<ItemView>; 7] = Default::default();
-        if !horizon_client::mobs::equine::is_equine(m.species()) {
-            equipment[0] = slot(&m.extra.main_hand);
-            equipment[1] = slot(&m.extra.off_hand);
-            equipment[2] = slot(&m.extra.head);
-            equipment[3] = slot(&m.extra.chest);
-            equipment[4] = slot(&m.extra.legs);
-            equipment[5] = slot(&m.extra.feet);
-        }
-        // A wolf's armor is its body slot, with its durability.
-        if m.species() == horizon_client::mobs::Species::Wolf {
-            equipment[6] = m.extra.head.as_ref().map(|id| {
-                let mut armor = ItemStack::new(id, 1);
-                armor.damage = m.extra.body_damage.max(0) as u32;
-                item_view(&armor)
-            });
-        }
+        equipment[0] = slot(&m.extra.main_hand);
+        equipment[1] = slot(&m.extra.off_hand);
+        equipment[2] = slot(&m.extra.head);
+        equipment[3] = slot(&m.extra.chest);
+        equipment[4] = slot(&m.extra.legs);
+        equipment[5] = slot(&m.extra.feet);
+        // The body slot (a wolf's armor, a horse's), with its durability.
+        equipment[6] = m.extra.body.as_ref().map(|id| {
+            let mut armor = ItemStack::new(id, 1);
+            armor.damage = m.extra.body_damage.max(0) as u32;
+            item_view(&armor)
+        });
         EntityView {
             kind: m.kind.id.clone(),
             position: [m.position.x, m.position.y, m.position.z],
@@ -563,10 +628,42 @@ impl Game<'_> {
         for (ai, ci) in hits {
             let a = &tree.list[ai];
             let was = self.adv.progress.done(a);
-            self.adv.progress.grant(&a.id, &a.criteria[ci].name, &date);
+            let criterion = &a.criteria[ci].name;
+            if self.adv.progress.grant(&a.id, criterion, &date) {
+                self.advancement_progress(&a.id, criterion, true);
+                if let (Some(player), Some(name)) =
+                    (self.lan_acting_uuid, self.lan_acting_name.clone())
+                {
+                    self.native_player_advancement_criterion_grant(player, &name, &a.id, criterion);
+                }
+            }
             self.progress_changed(ai);
             if !was && self.adv.progress.done(a) {
                 self.award(ai);
+            }
+        }
+    }
+    /// `PlayerAdvancements.award` / `revoke` after a criterion's progress changed.
+    fn advancement_progress(&mut self, advancement: &str, criterion: &str, granted: bool) {
+        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+            self.native_player_advancement_progress(player, &name, advancement, criterion, granted);
+        }
+    }
+    /// The criteria `CriteriaTriggers.TICK` granted network players in the hub
+    /// (their first tick and a reload), told to the mods.
+    pub(super) fn run_native_advancement_grants(&mut self) {
+        let Some(host) = self.lan.as_mut() else {
+            return;
+        };
+        for batch in std::mem::take(&mut host.hub.native_advancement_grants) {
+            for grant in batch.grants {
+                self.native_player_advancement_progress(
+                    batch.player,
+                    &batch.name,
+                    &grant.advancement,
+                    &grant.criterion,
+                    true,
+                );
             }
         }
     }
@@ -579,21 +676,49 @@ impl Game<'_> {
     /// After `ServerRecipeBook.addRecipes`: the toast and the
     /// `recipe_unlocked` trigger of each recipe now known.
     pub(super) fn recipe_unlocked(&mut self, unlocked: &[String]) {
+        let mut allowed = Vec::with_capacity(unlocked.len());
+        let mut refused = Vec::new();
+        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+            for recipe in unlocked {
+                let mut cancel = false;
+                self.native_player_recipe_discovered(player, &name, recipe, &mut cancel);
+                if cancel {
+                    refused.push(recipe.clone());
+                } else {
+                    allowed.push(recipe.clone());
+                }
+            }
+            if !refused.is_empty() {
+                let removed = self
+                    .level
+                    .recipe_book
+                    .remove_recipes(&world_stations!(self).recipe_index, &refused);
+                if self.lan_acting.is_some() && !removed.is_empty() {
+                    self.guest_packets.push(C::RecipeBookRemove(
+                        horizon_protocol::packets::recipes::RecipeBookRemove { ids: removed },
+                    ));
+                }
+            }
+        } else {
+            allowed.extend_from_slice(unlocked);
+        }
         if self.lan_acting.is_some() {
             // A network player's client gets them in ClientboundRecipeBookAddPacket.
-            self.adv.unlocked.extend_from_slice(unlocked);
+            self.adv.unlocked.extend_from_slice(&allowed);
         } else {
-            self.recipe_toast(unlocked);
+            self.recipe_toast(&allowed);
         }
-        if unlocked.is_empty() || self.remote.is_some() || self.no_player_here() {
+        if allowed.is_empty() || self.remote.is_some() || self.no_player_here() {
             return;
         }
         self.load_advancements();
         let tree = self.adv.tree.clone();
-        for r in unlocked {
+        for r in &allowed {
             let list = tree.recipe_criteria(r);
             self.trigger_criteria(&tree, &list, |c, _| {
-                c["recipes"].as_str() == Some(r.as_str())
+                c["recipes"]
+                    .as_str()
+                    .is_some_and(|id| adv::full(id) == r.as_str())
             });
         }
     }
@@ -618,7 +743,7 @@ impl Game<'_> {
         match result {
             Ok(unlocked) => {
                 self.recipe_unlocked(&unlocked);
-                self.stats.add("used", &stack.item, 1);
+                self.award_stat("used", &stack.item, 1);
                 self.swing_arm();
                 true
             }
@@ -630,13 +755,20 @@ impl Game<'_> {
             }
         }
     }
-    /// `PlayerAdvancements.award` once done: rewards, toast, announcement.
+    /// `PlayerAdvancements.award` once done: `AdvancementRewards.grant`,
+    /// then toast and announcement.
     fn award(&mut self, index: usize) {
         let tree = self.adv.tree.clone();
         let a = &tree.list[index];
+        if let (Some(player), Some(name)) = (self.lan_acting_uuid, self.lan_acting_name.clone()) {
+            self.native_player_advancement_done(player, &name, &a.id);
+        }
         // AdvancementRewards.grant
         if a.rewards.experience > 0 {
-            self.experience.give(a.rewards.experience);
+            let old_level = self.experience.level;
+            let points = self.xp_change(a.rewards.experience).map_or(0, |p| p.max(0));
+            self.experience.give(points);
+            self.native_player_level_changed(old_level);
         }
         // ServerPlayer.awardRecipesByKey: the rewards that name a recipe.
         let rewards: Vec<String> = a
@@ -662,6 +794,9 @@ impl Game<'_> {
                     self.spawn_item(rest, eye, [0.0; 3], 0);
                 }
             }
+        }
+        if let Some(function) = &a.rewards.function {
+            self.run_advancement_reward_function(function);
         }
         if let Some(d) = &a.display {
             // A network player's client shows its own toast.
@@ -792,7 +927,7 @@ impl Game<'_> {
         }
         self.check_inventory_trigger();
         // ServerPlayer.tick: PlayerTrigger.TICK every tick.
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:tick");
         self.trigger("minecraft:tick", |c, w| {
             let ctx = adv::Entities {
                 this: Some(&me),
@@ -826,7 +961,7 @@ impl Game<'_> {
         }
         self.tick_marks();
         if self.ticks.is_multiple_of(20) {
-            let me = self.player_entity();
+            let me = self.player_entity_for("minecraft:location");
             self.trigger("minecraft:location", |c, w| {
                 let ctx = adv::Entities {
                     this: Some(&me),
@@ -840,7 +975,7 @@ impl Game<'_> {
     }
     /// A player condition plus one entity (`player`, `entity` keys).
     pub(super) fn trigger_entity(&mut self, name: &str, key: &str, target: &EntityView) {
-        let me = self.player_entity();
+        let me = self.player_entity_for(name);
         let target = target.clone();
         let key = key.to_owned();
         self.trigger(name, move |c, w| {
@@ -873,7 +1008,7 @@ impl Game<'_> {
         target: &EntityView,
         blow: Option<&adv::DamageView>,
     ) {
-        let me = self.player_entity();
+        let me = self.player_entity_for(name);
         let target = target.clone();
         let blow = blow.cloned();
         self.trigger(name, move |c, w| {
@@ -902,7 +1037,7 @@ impl Game<'_> {
         victims: &[EntityView],
         weapon: Option<&ItemStack>,
     ) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:killed_by_arrow");
         let victims = victims.to_vec();
         let weapon = weapon.map(item_view);
         self.trigger("minecraft:killed_by_arrow", move |c, w| {
@@ -912,7 +1047,7 @@ impl Game<'_> {
     /// `LevitationTrigger`: how far the player rose from where it started
     /// levitating, and for how long.
     fn trigger_levitation(&mut self, start: [f64; 3], duration: i64) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:levitation");
         self.trigger("minecraft:levitation", move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),
@@ -1003,7 +1138,7 @@ impl Game<'_> {
     /// `DistanceTrigger`: the player's `player` condition, `start_position`
     /// at `start`, and the `distance` from `start` to the player.
     fn trigger_distance(&mut self, name: &str, start: [f64; 3]) {
-        let me = self.player_entity();
+        let me = self.player_entity_for(name);
         self.trigger(name, move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),
@@ -1021,7 +1156,7 @@ impl Game<'_> {
     /// player is now. `matches` tests `cause` only when the instance has one,
     /// and a missing cause fails it.
     fn trigger_fall_after_explosion(&mut self, impact: [f64; 3], cause: Option<EntityView>) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:fall_after_explosion");
         self.trigger("minecraft:fall_after_explosion", move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),
@@ -1047,7 +1182,7 @@ impl Game<'_> {
     /// `EffectsChangedTrigger`: the player's `effects`, and for an effect that
     /// `source` gave, that entity (`source`).
     fn trigger_effects_changed(&mut self, source: Option<EntityView>) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:effects_changed");
         self.trigger("minecraft:effects_changed", move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),
@@ -1084,7 +1219,7 @@ impl Game<'_> {
         if self.remote.is_some() || self.no_player_here() {
             return;
         }
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:item_durability_changed");
         let item = item_view(stack);
         let max = self
             .res
@@ -1107,14 +1242,12 @@ impl Game<'_> {
                 && adv::range_i(&c["delta"], damage - new_damage)
         });
     }
-    /// `ServerPlayer.updateUsingItem`: USING_ITEM for the item in use, with
-    /// what the player looks at (`PlayerPredicate.lookingAt`).
+    /// `ServerPlayer.updateUsingItem`: USING_ITEM for the item in use.
     pub(super) fn trigger_using_item(&mut self, stack: &ItemStack) {
         if self.remote.is_some() || self.no_player_here() {
             return;
         }
-        let mut me = self.player_entity();
-        me.looking_at = self.looking_at_entity().map(Box::new);
+        let me = self.player_entity_for("minecraft:using_item");
         let it = item_view(stack);
         self.trigger("minecraft:using_item", move |c, w| {
             let pctx = adv::Entities {
@@ -1126,24 +1259,60 @@ impl Game<'_> {
             adv::conditions(&c["player"], &pctx, w) && adv::item(&c["item"], &it, w)
         });
     }
-    /// The mob a 100 block ray from the eyes meets first, if no block is in
-    /// the way (`ProjectileUtil.getEntityHitResult` and `hasLineOfSight`).
+    /// The entity a 100 block ray from the eyes meets first, if no block is
+    /// in the way (`ProjectileUtil.getEntityHitResult` over every entity but
+    /// the player that is not a spectator, then `hasLineOfSight`).
     fn looking_at_entity(&self) -> Option<EntityView> {
+        use super::commands::Target;
+        use super::entity::{Entity as _, entity_lists_of, for_each_entity};
+        use horizon_core::geometry::Aabb;
         let eye = self.eye_position()?;
         let dir = super::view_vector(self.yaw, self.pitch);
-        let (m, _) = self
-            .mobs
-            .iter()
-            .filter(|m| m.alive())
-            .filter_map(|m| Some((m, super::ray_box(eye, dir, 100.0, m.bounds())?)))
-            .min_by(|a, b| a.1.total_cmp(&b.1))?;
+        let mut best: Option<(Target, f64)> = None;
+        let mut offer = |t: Option<Target>, b: Aabb| {
+            if let Some(t) = t
+                && let Some(d) = super::ray_box(eye, dir, 100.0, b)
+                && best.is_none_or(|(_, bd)| d < bd)
+            {
+                best = Some((t, d));
+            }
+        };
+        for_each_entity!(entity_lists_of!(self), e => {
+            if !e.is_removed() {
+                offer(e.selector_target(), e.bounds());
+            }
+        });
+        let aabb = |(lo, hi): ([f64; 3], [f64; 3])| {
+            Aabb::new(
+                Vec3::new(lo[0], lo[1], lo[2]),
+                Vec3::new(hi[0], hi[1], hi[2]),
+            )
+        };
+        for f in self.item_frames.iter() {
+            offer(Some(Target::Frame(f.id)), aabb(f.bounds()));
+        }
+        for p in self.paintings.iter() {
+            offer(Some(Target::Painting(p.id)), aabb(p.bounds()));
+        }
+        for c in self.crystals.iter() {
+            offer(Some(Target::Crystal(c.id)), c.bounds());
+        }
+        let (t, _) = best?;
         // `LivingEntity.hasLineOfSight`: eye to the target's eye height,
         // `ClipContext.Block.COLLIDER`, no fluids, within 128 blocks.
+        let at = self.target_position(t)?;
         let from = Vec3::new(eye[0], eye[1], eye[2]);
-        let to = Vec3::new(m.position.x, m.eye_y(), m.position.z);
+        let to = Vec3::new(at[0], at[1] + self.target_eye_height(t), at[2]);
         let world = self.mob_world_base(&[]);
         let clear = to.distance(from) <= 128.0 && world.clear_between(from, to, false);
-        clear.then(|| self.mob_entity(m))
+        if !clear {
+            return None;
+        }
+        Some(match t {
+            Target::Mob(id) => self.mob_entity(self.mobs.iter().find(|m| m.id == id)?),
+            Target::Boat(id) => self.boat_entity(self.boats.iter().find(|b| b.id == id)?),
+            other => self.entity_view_of(other),
+        })
     }
     /// `PlayerHurtEntityTrigger`: the player, the damage and the victim.
     pub(super) fn trigger_player_hurt_entity(
@@ -1151,7 +1320,7 @@ impl Game<'_> {
         victim: &EntityView,
         damage: &adv::DamageView,
     ) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:player_hurt_entity");
         let (victim, damage) = (victim.clone(), damage.clone());
         self.trigger("minecraft:player_hurt_entity", move |c, w| {
             let pctx = adv::Entities {
@@ -1179,7 +1348,7 @@ impl Game<'_> {
         direct: Option<EntityView>,
         amount: f32,
     ) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:player_hurt_entity");
         self.trigger_player_hurt_entity(
             victim,
             &adv::DamageView {
@@ -1195,7 +1364,7 @@ impl Game<'_> {
     }
     /// `EntityHurtPlayerTrigger`: the player and the damage it took.
     pub(super) fn trigger_entity_hurt_player(&mut self, damage: &adv::DamageView) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:entity_hurt_player");
         let damage = damage.clone();
         self.trigger("minecraft:entity_hurt_player", move |c, w| {
             let pctx = adv::Entities {
@@ -1210,7 +1379,7 @@ impl Game<'_> {
     }
     /// A player condition plus one item (`item` key).
     pub(super) fn trigger_item(&mut self, name: &str, stack: &ItemStack) {
-        let me = self.player_entity();
+        let me = self.player_entity_for(name);
         let it = item_view(stack);
         self.trigger(name, move |c, w| {
             let pctx = adv::Entities {
@@ -1228,7 +1397,7 @@ impl Game<'_> {
         stack: &ItemStack,
         target: &EntityView,
     ) {
-        let me = self.player_entity();
+        let me = self.player_entity_for(name);
         let it = item_view(stack);
         self.trigger(name, |c, w| adv::item_entity(c, &me, target, &it, w));
     }
@@ -1244,7 +1413,12 @@ impl Game<'_> {
         thrower: [i32; 4],
     ) {
         let target = if thrower == self.acting_uuid() {
-            let me = self.player_entity();
+            // The player is the entity of both triggers.
+            let tree = &self.adv.tree;
+            let me = self.player_entity_looking(
+                tree.may_look("minecraft:thrown_item_picked_up_by_entity")
+                    || tree.may_look("minecraft:thrown_item_picked_up_by_player"),
+            );
             self.trigger_item_entity("minecraft:thrown_item_picked_up_by_entity", stack, &me);
             me
         } else if let Some(id) = self.mob_by_uuid(thrower) {
@@ -1259,7 +1433,7 @@ impl Game<'_> {
     }
     /// `ConstructBeaconTrigger`: the pyramid levels of the new beacon.
     pub(super) fn trigger_construct_beacon(&mut self, levels: i32) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:construct_beacon");
         self.trigger("minecraft:construct_beacon", move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),
@@ -1272,7 +1446,7 @@ impl Game<'_> {
     }
     /// `EnchantedItemTrigger`: the enchanted item and the levels it cost.
     pub(super) fn trigger_enchanted_item(&mut self, stack: &ItemStack, levels: i32) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:enchanted_item");
         let it = item_view(stack);
         self.trigger("minecraft:enchanted_item", move |c, w| {
             let pctx = adv::Entities {
@@ -1289,7 +1463,7 @@ impl Game<'_> {
     /// `BrewedPotionTrigger`: the potion contents of a stack taken from a
     /// brewing stand.
     pub(super) fn trigger_brewed_potion(&mut self, stack: &ItemStack) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:brewed_potion");
         let potion = stack.potion().map(str::to_owned);
         self.trigger("minecraft:brewed_potion", move |c, w| {
             let pctx = adv::Entities {
@@ -1304,7 +1478,7 @@ impl Game<'_> {
     }
     /// `TradeTrigger`: the villager and the item the trade gave.
     pub(super) fn trigger_trade(&mut self, villager: &EntityView, stack: &ItemStack) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:villager_trade");
         let villager = villager.clone();
         let it = item_view(stack);
         self.trigger("minecraft:villager_trade", move |c, w| {
@@ -1331,7 +1505,7 @@ impl Game<'_> {
         hooked: &EntityView,
         items: &[ItemStack],
     ) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:fishing_rod_hooked");
         let rod = item_view(rod);
         let hooked = hooked.clone();
         let items: Vec<ItemView> = items.iter().map(item_view).collect();
@@ -1357,7 +1531,7 @@ impl Game<'_> {
         let Some(definition) = self.pack.assets.registry.state(state).cloned() else {
             return;
         };
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:enter_block");
         self.trigger("minecraft:enter_block", move |c, w| {
             let block_ok = adv::id_matches(&c["blocks"], "block", &definition.name, w);
             let state_ok = c["state"]
@@ -1376,7 +1550,7 @@ impl Game<'_> {
     }
     /// `SlideDownBlockTrigger`: match the actual block and its state.
     pub(super) fn trigger_honey_slide(&mut self, pos: [i32; 3]) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:slide_down_block");
         self.trigger("minecraft:slide_down_block", move |c, w| {
             let ctx = adv::Entities {
                 this: Some(&me),
@@ -1391,7 +1565,7 @@ impl Game<'_> {
     /// `TargetBlockTrigger`: signal and projectile conditions are evaluated in
     /// the shooter's context, including distance from the shooter.
     pub(super) fn trigger_target_hit(&mut self, projectile: &EntityView, strength: i32) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:target_hit");
         let projectile = projectile.clone();
         self.trigger("minecraft:target_hit", move |c, w| {
             let player = adv::Entities {
@@ -1412,7 +1586,7 @@ impl Game<'_> {
 
     /// `ItemUsedOnLocationTrigger` (placed_block, item_used_on_block).
     pub(super) fn trigger_block(&mut self, name: &str, pos: [i32; 3], stack: &ItemStack) {
-        let me = self.player_entity();
+        let me = self.player_entity_for(name);
         let it = item_view(stack);
         self.trigger(name, move |c, w| {
             let ctx = adv::Entities {
@@ -1424,10 +1598,42 @@ impl Game<'_> {
             adv::conditions(&c["location"], &ctx, w)
         });
     }
+    /// `DefaultBlockInteractionTrigger` (default_block_use): the player, and
+    /// the block's `BLOCK_USE` context at its centre, with no tool.
+    pub(super) fn trigger_default_block_use(&mut self, pos: [i32; 3]) {
+        self.trigger_block_use("minecraft:default_block_use", pos, None);
+    }
+    /// `AnyBlockInteractionTrigger` (any_block_use): the player, and the
+    /// block's `ADVANCEMENT_LOCATION` context at its centre with the stack in
+    /// hand as the use left it.
+    pub(super) fn trigger_any_block_use(&mut self, pos: [i32; 3], stack: &ItemStack) {
+        self.trigger_block_use("minecraft:any_block_use", pos, Some(stack));
+    }
+    fn trigger_block_use(&mut self, name: &str, pos: [i32; 3], stack: Option<&ItemStack>) {
+        let me = self.player_entity_for(name);
+        let it = stack.map(item_view);
+        let centre = pos.map(|c| f64::from(c) + 0.5);
+        self.trigger(name, move |c, w| {
+            let player = adv::Entities {
+                this: Some(&me),
+                origin: me.position,
+                tool: None,
+                block_pos: None,
+            };
+            let location = adv::Entities {
+                origin: centre,
+                tool: it.as_ref(),
+                block_pos: Some(pos),
+                ..player
+            };
+            adv::conditions(&c["player"], &player, w)
+                && adv::conditions(&c["location"], &location, w)
+        });
+    }
     /// `LightningStrikeTrigger`: the bolt, and the mobs around it that it did
     /// not hit (`bystander`), each tested from this player's position.
     pub(super) fn trigger_lightning_strike(&mut self, bolt: &EntityView, viewers: &[EntityView]) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:lightning_strike");
         let (bolt, viewers) = (bolt.clone(), viewers.to_vec());
         self.trigger("minecraft:lightning_strike", move |c, w| {
             let pctx = adv::Entities {
@@ -1458,7 +1664,7 @@ impl Game<'_> {
     /// `ChanneledLightningTrigger`: each victim condition matched by some
     /// mob the bolt hit, from the player who channelled it.
     pub(super) fn trigger_channeled_lightning(&mut self, victims: &[EntityView]) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:channeled_lightning");
         let victims = victims.to_vec();
         self.trigger("minecraft:channeled_lightning", move |c, w| {
             let pctx = adv::Entities {
@@ -1484,7 +1690,7 @@ impl Game<'_> {
     }
     /// `SpearMobsTrigger`: the living entities the spear stabbed in this use.
     pub(super) fn trigger_spear_mobs(&mut self, stabbed: usize) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:spear_mobs");
         self.trigger("minecraft:spear_mobs", move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),
@@ -1507,7 +1713,7 @@ impl Game<'_> {
         let Some(definition) = self.pack.assets.registry.state(state).cloned() else {
             return;
         };
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:bee_nest_destroyed");
         let tool = tool.map(item_view).unwrap_or_default();
         self.trigger("minecraft:bee_nest_destroyed", move |c, w| {
             let pctx = adv::Entities {
@@ -1530,7 +1736,7 @@ impl Game<'_> {
     }
     /// A trigger with only the player condition (slept_in_bed, started_riding).
     pub(super) fn trigger_player(&mut self, name: &str) {
-        let me = self.player_entity();
+        let me = self.player_entity_for(name);
         self.trigger(name, move |c, w| {
             let pctx = adv::Entities {
                 this: Some(&me),
@@ -1548,7 +1754,7 @@ impl Game<'_> {
         recipe: &str,
         ingredients: &[Option<ItemStack>],
     ) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:recipe_crafted");
         let used: Vec<ItemView> = ingredients
             .iter()
             .map(|s| {
@@ -1577,7 +1783,7 @@ impl Game<'_> {
     /// `LootTableTrigger`: a container's loot table unpacked for this player
     /// (`RandomizableContainer.unpackLootTable`).
     pub(super) fn trigger_loot_table(&mut self, table: &str) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:player_generates_container_loot");
         let table = table.to_owned();
         self.trigger("minecraft:player_generates_container_loot", move |c, w| {
             let pctx = adv::Entities {
@@ -1597,7 +1803,7 @@ impl Game<'_> {
         partner: &EntityView,
         child: Option<&EntityView>,
     ) {
-        let me = self.player_entity();
+        let me = self.player_entity_for("minecraft:bred_animals");
         let (parent, partner, child) = (parent.clone(), partner.clone(), child.cloned());
         self.trigger("minecraft:bred_animals", move |c, w| {
             let ctx = |e: &EntityView| {
@@ -1638,8 +1844,8 @@ impl Game<'_> {
     pub(super) fn trigger_dimension(&mut self, from: Dim, to: Dim, at: [f64; 3]) {
         let (from_id, to_id) = (from.id().to_owned(), to.id().to_owned());
         self.trigger("minecraft:changed_dimension", move |c, _| {
-            c["from"].as_str().is_none_or(|f| f == from_id)
-                && c["to"].as_str().is_none_or(|t| t == to_id)
+            c["from"].as_str().is_none_or(|f| adv::full(f) == from_id)
+                && c["to"].as_str().is_none_or(|t| adv::full(t) == to_id)
         });
         if from == Dim::Overworld && to == Dim::Nether {
             self.adv.marks.nether = Some(at);
@@ -1709,7 +1915,8 @@ impl Game<'_> {
             }
         }
     }
-    /// The slots held by shown advancement, recipe and pack toasts, as bits.
+    /// The slots held by shown advancement, recipe, pack and narrator toasts,
+    /// as bits.
     pub(super) fn toast_slots_used(&self) -> u32 {
         let packs = self.server_packs.toast_slots();
         self.adv
@@ -1717,6 +1924,7 @@ impl Game<'_> {
             .iter()
             .filter_map(|t| t.slot)
             .chain(packs)
+            .chain(self.narrator_toast.as_ref().and_then(|t| t.slot))
             .fold(self.tutorial_toast_slots(), |used, slot| used | 1 << slot)
     }
     /// The `AdvancementToast` or `RecipeToast` at `index` in its slot at `y`.
@@ -1746,11 +1954,7 @@ impl Game<'_> {
         }
         let atlas = &self.gui.atlas;
         batch.sprite(atlas, "gui/sprites/toast/advancement", x, y);
-        let (key, color) = match frame {
-            Frame::Task => ("advancements.toast.task", 0xFFFF_FF00),
-            Frame::Goal => ("advancements.toast.goal", 0xFFFF_FF00),
-            Frame::Challenge => ("advancements.toast.challenge", 0xFFFF_88FF),
-        };
+        let (key, color) = toast_label(frame);
         // AdvancementToast.extractRenderState: a title of one line sits under
         // the frame's label; a longer one is wrapped at 125, the label fading
         // out first (to 1.5 s) and the lines fading in after it over 0.3 s.
@@ -1785,6 +1989,15 @@ impl Game<'_> {
             }
         }
         self.draw_item(batch, &ItemStack::new(&icon, 1), x + 8.0, y + 8.0);
+    }
+}
+/// The toast's frame label and its colour (`AdvancementToast`: -30465, pink,
+/// for a challenge, else -256, yellow), packed as `hud::rgba` for the batch.
+fn toast_label(frame: Frame) -> (&'static str, u32) {
+    match frame {
+        Frame::Task => ("advancements.toast.task", rgba(255, 255, 0, 255)),
+        Frame::Goal => ("advancements.toast.goal", rgba(255, 255, 0, 255)),
+        Frame::Challenge => ("advancements.toast.challenge", rgba(255, 136, 255, 255)),
     }
 }
 /// `Advancement.name`: the bracketed title in the frame's colour, with the
@@ -1846,6 +2059,7 @@ impl Game<'_> {
             let was = self.adv.progress.done(a);
             if self.adv.progress.grant(&a.id, c, &date) {
                 changed = true;
+                self.advancement_progress(&a.id, c, true);
                 self.progress_changed(index);
                 if !was && self.adv.progress.done(a) {
                     self.award(index);
@@ -1860,15 +2074,24 @@ impl Game<'_> {
         let a = &tree.list[index];
         self.progress_changed(index);
         match criterion {
-            Some(c) => self.adv.progress.revoke(&a.id, c),
+            Some(c) => self.revoke_criterion(&a.id, c),
             None => {
                 let mut any = false;
                 for c in &a.criteria {
-                    any |= self.adv.progress.revoke(&a.id, &c.name);
+                    any |= self.revoke_criterion(&a.id, &c.name);
                 }
                 any
             }
         }
+    }
+    /// `PlayerAdvancements.revoke(holder, criterion)`: the progress change and
+    /// the hook for it.
+    fn revoke_criterion(&mut self, advancement: &str, criterion: &str) -> bool {
+        let revoked = self.adv.progress.revoke(advancement, criterion);
+        if revoked {
+            self.advancement_progress(advancement, criterion, false);
+        }
+        revoked
     }
 }
 impl Game<'_> {
@@ -1920,7 +2143,7 @@ impl Game<'_> {
                     criteria.push(adv::Criterion {
                         name: name.clone(),
                         trigger: String::new(),
-                        conditions: Value::Null,
+                        conditions: Value::Null.into(),
                     });
                 }
             }
@@ -1983,6 +2206,51 @@ pub(super) fn text_of(v: &Value) -> Text {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn looking_at_triggers_are_the_ones_that_ask() {
+        let criterion = |trigger: &str, conditions: serde_json::Value| adv::Criterion {
+            name: "c".into(),
+            trigger: trigger.into(),
+            conditions: horizon_world::lazy_json::LazyJson::new(&conditions),
+        };
+        let looking = serde_json::json!({"player": {"type": "minecraft:entity_properties",
+            "entity": "this", "predicate": {"minecraft:type_specific/player":
+            {"looking_at": {"minecraft:entity_type": "minecraft:oak_boat"}}}}});
+        let reference = serde_json::json!({"player": [{"condition": "minecraft:reference",
+            "name": "pack:looks"}]});
+        let plain = serde_json::json!({"player": {"type": "minecraft:entity_properties",
+            "entity": "this", "predicate": {"minecraft:flags": {"is_sneaking": true}}}});
+        let mut tree = Tree::default();
+        tree.list.push(adv::Advancement {
+            id: "pack:a".into(),
+            parent: None,
+            display: None,
+            criteria: vec![
+                criterion("minecraft:using_item", looking),
+                criterion("minecraft:location", reference),
+                criterion("minecraft:tick", plain),
+            ],
+            requirements: Vec::new(),
+            rewards: Default::default(),
+        });
+        tree.index_looking_at();
+        assert!(tree.may_look("minecraft:using_item"));
+        assert!(tree.may_look("minecraft:location"));
+        assert!(!tree.may_look("minecraft:tick"));
+    }
+
+    #[test]
+    fn toast_labels_are_yellow_or_pink() {
+        // The batch takes colours as `rgba`: 0xFFFF_FF00 there is cyan (#5850).
+        for frame in [Frame::Task, Frame::Goal] {
+            assert_eq!(toast_label(frame).1.to_le_bytes(), [255, 255, 0, 255]);
+        }
+        assert_eq!(
+            toast_label(Frame::Challenge).1.to_le_bytes(),
+            [255, 136, 255, 255]
+        );
+    }
 
     fn recipes(n: usize) -> Toast {
         Toast::recipe(
