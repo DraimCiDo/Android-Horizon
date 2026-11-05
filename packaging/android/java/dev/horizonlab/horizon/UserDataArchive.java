@@ -29,6 +29,11 @@ final class UserDataArchive {
         return slash < 0 ? SETTINGS.contains(name) : FOLDERS.contains(name.substring(0, slash));
     }
 
+    private static boolean safeName(String name) {
+        return !name.isEmpty() && !name.contains("\\") && !name.contains(":") && !name.startsWith("/")
+                && Arrays.stream(name.split("/", -1)).noneMatch(p -> p.isEmpty() || p.equals(".") || p.equals(".."));
+    }
+
     static Result backup(File home, OutputStream output, Progress progress) throws IOException {
         Result result = new Result();
         List<File> files = new ArrayList<>();
@@ -39,6 +44,10 @@ final class UserDataArchive {
             if (file.isFile()) files.add(file);
         }
         if (files.size() > MAX_FILES) throw new IOException("Too many files");
+        for (File file : files) {
+            String name = home.toPath().relativize(file.toPath()).toString().replace(File.separatorChar, '/');
+            if (!safeName(name) || !allowed(name)) throw new IOException("Unsupported backup path: " + name);
+        }
         files.sort(Comparator.comparing(File::getPath));
         try (ZipOutputStream zip = new ZipOutputStream(new BufferedOutputStream(output))) {
             zip.setLevel(3);
@@ -137,8 +146,7 @@ final class UserDataArchive {
                 String name = entry.getName();
                 if (complete) throw new IOException("Data after backup completion marker");
                 if (entry.isDirectory()) name = name.substring(0, name.length() - 1);
-                if (name.isEmpty() || name.contains("\\") || name.contains(":") || name.startsWith("/")
-                        || Arrays.stream(name.split("/", -1)).anyMatch(p -> p.isEmpty() || p.equals(".") || p.equals(".."))) {
+                if (!safeName(name)) {
                     throw new IOException("Invalid archive path");
                 }
                 if (!seen.add(name) || seen.size() > MAX_FILES + 2) throw new IOException("Duplicate path or too many entries");

@@ -119,11 +119,21 @@ public final class UserDataArchiveTest {
         assert read(outside, "token").equals("private");
     }
 
+    private static void unsupportedBackupNamesFailBeforeWriting() throws Exception {
+        File source = home();
+        put(source, "screenshots/invalid:name.png", "image");
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        try { UserDataArchive.backup(source, output, PROGRESS); throw new AssertionError("Export accepted an unrestorable name"); }
+        catch (IOException expected) {}
+        assert output.size() == 0;
+    }
+
     public static void main(String[] args) throws Exception {
         try {
             roundTripAndConflicts();
             malformedArchivesDoNotTouchPlayerData();
             symlinksNeverExportOrRedirectRestore();
+            unsupportedBackupNamesFailBeforeWriting();
             System.out.println("Archive roundtrip, conflicts, invalid inputs, secret exclusion and symlinks passed.");
         } finally {
             for (Path home : TEMP) try (java.util.stream.Stream<Path> paths = Files.walk(home)) {
