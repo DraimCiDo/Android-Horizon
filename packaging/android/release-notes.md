@@ -1,34 +1,36 @@
 > 🤖 Published by DraimCiDo's AI agent (Codex), not by DraimCiDo personally.
 
-## Android 0.4.3: touch controls and interface
+## Android 0.4.4: Horizon Nightly 2026-11-05
 
-- New **Controls and interface** screen in the launcher and in-game profile:
-  camera sensitivity/inversion, button size/opacity, edge margins, joystick
-  deadzone, control scheme and interface scale. Save and return to the game;
-  settings apply after all fingers are lifted, without restarting.
-- Resolution-independent camera movement and a touch-specific joystick deadzone.
-- Main/off-hand swap button; inventory/drop controls moved away from the hotbar.
-- Fast button taps reach the simulation; a second finger cannot steal the joystick
-  or release another finger's button. System-cancelled touches cannot become
-  short attack/use taps.
-- Tap inventory slots normally, long press for right click (half stack / one item),
-  drag through the normal inventory input path, and swipe world/server lists.
-- Responsive English/Russian layout editor; existing custom positions survive.
-  Touch preferences are now included in user-data backups.
+The engine source is merged with the official Nightly's exact published revision:
+[f319701e8c9ab657ff562250b3ba07b2d654e3bc](https://github.com/horizon-rust/horizon/commit/f319701e8c9ab657ff562250b3ba07b2d654e3bc),
+permanent upstream tag `nightly-source/2026-11-05-f319701`.
+The moving `nightly` tag is not used at runtime.
 
-Download `horizon-0.4.3-s25-ultra-arm64.apk`; `SHA256SUMS` contains its checksum.
-Complete game resources remain inside the APK. The S25 Ultra device profile and
-engine base Horizon `63eccfc` are retained. Microsoft client ID configuration is
-still absent, as requested; Microsoft sign-in remains unavailable.
+- Includes the upstream changes since our November 4 engine base: PvP/HUD settings,
+  controller menu input updates, shader/renderer improvements, native mod API
+  additions and gameplay fixes. See the upstream Nightly notes for the full list;
+  desktop-specific additions are not promises of Android hardware support.
+- Preserves the Android launcher, offline resource bundle, S25 Ultra profile,
+  live touch settings, offhand button, inventory gestures and portable backups.
+- Resolves upstream startup/HUD changes while retaining local skins and touch
+  controls. Android surface-loss/resume handling is retained.
+- README is completely rewritten for this Android fork: installation, exact engine
+  version, controls, backup/restore, graphics, Microsoft status, mods and builds.
+  The original current upstream README remains in README.upstream.md.
 
-Validation: game compilation/type checking, geometry/deadzone/camera math tests,
-Android Java compilation, Python/JVM tests, APK signature, launcher entry point,
-embedded-resource checksum and 16 KiB ELF alignment. New touch gestures and UI
-still need testing on a physical phone.
+Download `horizon-0.4.4-s25-ultra-arm64.apk`; `SHA256SUMS` contains its checksum.
+The complete game resources remain inside the APK. No separate ZIP is required.
+Microsoft sign-in remains unconfigured, as requested; no client ID was invented.
 
-ARM64 Android 8.0+; experimental prerelease. CI uses a fresh signing key, so Android
-may require uninstalling the old APK. **Back up player data before uninstalling.**
-In 0.4.2 use Files → Create backup and save the ZIP outside Horizon. In 0.4.1 copy
-`saves` using Android's Files app → Horizon. Uninstalling deletes app data.
+Validation includes the merged game/tool type checks, Android Java compilation,
+Python/JVM tests, touch geometry tests, APK signing and launcher entry point,
+resource archive checksum and 16 KiB ELF alignment. The updated Nightly still
+needs testing on a physical S25 Ultra; prior device testing covers older releases.
+
+ARM64 Android 8.0+; experimental prerelease. **Back up before uninstalling**:
+CI uses a fresh signing key and Android may require removing the previous APK.
+Use Files → Create backup and save outside Horizon (0.4.2+), or manually copy
+`saves` via the system Files app (0.4.1). Uninstalling deletes app data.
 
 🤖 Generated with [Codex](https://openai.com/codex/)

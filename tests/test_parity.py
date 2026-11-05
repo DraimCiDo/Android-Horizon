@@ -2,7 +2,8 @@ import re
 import unittest
 from pathlib import Path
 
-README = Path(__file__).resolve().parents[1] / 'README.md'
+# The upstream parity report is kept intact beside this fork's Android README.
+README = Path(__file__).resolve().parents[1] / 'README.upstream.md'
 
 
 class ParityTests(unittest.TestCase):

@@ -29,10 +29,10 @@ build still uses JDK 21. Generated resources remain under ignored `.local/` and
 `target/`; never add them to Git. Older instructions below also describe developer
 builds made without a complete embedded resource bundle.
 
-The game runs as a `NativeActivity` (no Java/Kotlin code): `crates/horizon-android` builds
+The game runs as a Rust `NativeActivity`, with a Java Android UI/input bridge: `crates/horizon-android` builds
 horizon-client's game (`src/game.rs` + `src/game/`) as `libhorizon.so`, with the entry point
 `crates/horizon-client/src/android_main.rs` instead of `main.rs`. Rendering is wgpu (Vulkan, GLES 3 fallback);
-sound is cpal over AAudio. Status: compiles, links and packages; **not yet run on a device**.
+sound is cpal over AAudio. Previous releases were exercised on a physical S25 Ultra; each engine update still needs device testing.
 
 ## Build the APK (Linux host)
 
@@ -40,11 +40,10 @@ sound is cpal over AAudio. Status: compiles, links and packages; **not yet run o
 rustup target add aarch64-linux-android
 cargo install cargo-ndk
 # Android SDK: cmdline-tools, then
-sdkmanager "platforms;android-34" "build-tools;34.0.0" "ndk;27.2.12479018" "platform-tools"
+sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;27.2.12479018" "platform-tools"
 export ANDROID_HOME=~/android/sdk            # NDK: the newest under $ANDROID_HOME/ndk, or ANDROID_NDK_HOME
 ./packaging/android/build_apk.sh             # -> target/android/horizon.apk (debug-signed)
 PROFILE=release ./packaging/android/build_apk.sh   # slower build, faster game
-CARGO_FLAGS="--features mods" ./packaging/android/build_apk.sh   # wasm code mods (untested on Android)
 ```
 
 The script runs `cargo ndk` (API 26, arm64-v8a), strips the library, links the manifest
@@ -59,7 +58,7 @@ adb install -r target/android/horizon.apk
 
 Or copy the APK to the phone and open it (allow "install unknown apps"). Needs Android 8.0+ (API 26), arm64.
 
-## Game files
+## Developer builds without bundled game resources
 
 Horizon never ships Minecraft's files. Prepare them **on a PC** (needs Java, see README.md):
 

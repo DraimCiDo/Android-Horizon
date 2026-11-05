@@ -1289,7 +1289,7 @@ dependencies = [
 
 [[package]]
 name = "horizon-android"
-version = "0.4.3"
+version = "0.4.4"
 dependencies = [
  "ab_glyph",
  "bytemuck",
@@ -1485,6 +1485,7 @@ dependencies = [
  "chrono",
  "flate2",
  "fs4",
+ "getrandom 0.3.4",
  "gilrs",
  "glam",
  "horizon-anticheat",

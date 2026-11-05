@@ -920,7 +920,10 @@ impl Launcher {
     /// When another launcher already put it there, this one only restarts.
     fn apply_launcher_update(&mut self, cx: &mut App) {
         match horizon_launcher::update_handoff::start_now() {
-            Ok(true) => shut_down(cx),
+            Ok(true) => {
+                servers_page::keep_running_through_update();
+                shut_down(cx)
+            }
             Ok(false) => self.self_update = SelfUpdate::Failed(backend::restart()),
             Err(e) => self.self_update = SelfUpdate::Failed(e),
         }
@@ -1152,8 +1155,10 @@ impl Launcher {
                             if e == account::NoOwner.to_string() {
                                 self.owner = Some(false);
                                 self.owner_screen_open = true;
+                                self.client_error = Some(account::NoOwner::in_window());
+                            } else {
+                                self.client_error = Some(e);
                             }
-                            self.client_error = Some(e);
                         }
                     }
                 }
@@ -1166,7 +1171,7 @@ impl Launcher {
                             Err(account::NoOwner) => {
                                 self.owner = Some(false);
                                 self.owner_screen_open = true;
-                                self.client_error = Some(format!("{}.", tr(account::NEEDS_OWNER)));
+                                self.client_error = Some(account::NoOwner::in_window());
                                 self.starting_pack = None;
                                 self.joining = None;
                                 self.quick_play = None;
@@ -1453,14 +1458,18 @@ impl Launcher {
                                 .client_started
                                 .take()
                                 .and_then(|since| backend::crash_report_since(&home, since));
-                            if error.is_some() && report.is_none() && self.switched_to_dx12() {
-                                self.client_error = Some(
+                            let switched = if error.is_some() && report.is_none() {
+                                self.switched_from_vulkan()
+                            } else {
+                                None
+                            };
+                            if let Some(api) = switched {
+                                self.client_error = Some(trf(
                                     "Horizon's Vulkan renderer crashed while starting on this \
-                                     graphics card, so the game now uses DirectX 12. Press Play \
-                                     to start it again. Video Settings > Graphics API switches \
-                                     back."
-                                        .into(),
-                                );
+                                     graphics card, so the game now uses {api}. Press Play to \
+                                     start it again. Video Settings > Graphics API switches back.",
+                                    &[("api", api)],
+                                ));
                             } else if error.is_some() || report.is_some() {
                                 let summary = report
                                     .as_ref()
@@ -1526,11 +1535,13 @@ impl Launcher {
     }
 
     /// After a crash with no report: when the game's output ends while its Vulkan renderer
-    /// started, a native crash in the graphics driver (#746), switches the game to DirectX 12
-    /// (Windows only; only where the player left the graphics API on Auto). True when it did.
-    fn switched_to_dx12(&self) -> bool {
-        if !cfg!(windows) || !backend::vulkan_start_crashed(&self.prepare_log) {
-            return false;
+    /// started, a native crash in the graphics driver (#746), switches the game to
+    /// `backend::vulkan_crash_fallback` (DirectX 12 on Windows, OpenGL on Linux; only where the
+    /// player left the graphics API on Auto). The API's label when it did.
+    fn switched_from_vulkan(&self) -> Option<&'static str> {
+        let (api, label) = backend::vulkan_crash_fallback(std::env::consts::OS)?;
+        if !backend::vulkan_start_crashed(&self.prepare_log) {
+            return None;
         }
         // The GPU is the same for every profile: the game home's setting and the crashed run's.
         let home = backend::game_home();
@@ -1538,12 +1549,12 @@ impl Launcher {
         homes.extend(self.client_home.clone().filter(|h| *h != home));
         let mut switched = false;
         for home in homes {
-            match backend::switch_to_dx12(&home) {
+            match backend::switch_from_auto(&home, api) {
                 Ok(changed) => switched |= changed,
-                Err(e) => eprintln!("Horizon launcher: could not switch to DirectX 12: {e}"),
+                Err(e) => eprintln!("Horizon launcher: could not switch to {label}: {e}"),
             }
         }
-        switched
+        switched.then_some(label)
     }
 
     /// The version Play starts: the selected instance's own, else the launcher's.
@@ -3913,7 +3924,8 @@ impl Launcher {
                     .child(group("Network", "globe"))
                     .child(self.proxy_row(n + 4, cx))
                     .child(group("Game", "gamepad"))
-                    .child(self.game_args_row(n + 5, cx))
+                    .child(self.game_architecture_row(n + 5, cx))
+                    .child(self.game_args_row(n + 6, cx))
                     .child(group("AI", "terminal"))
                     .child(self.no_ai_row(n + 6, cx))
                     .child(group("About", "info-box"))
@@ -4062,8 +4074,55 @@ impl Launcher {
             )
     }
 
-    /// Settings' Game arguments row: the extra arguments the game starts with, kept in
-    /// `settings.json` and appended to the launcher's own (quotes group a word with spaces).
+    /// Settings' Windows ARM game architecture choice; release installation, updates and launch
+    /// use the saved choice, while launcher updates continue to follow this process.
+    fn game_architecture_row(&self, n: usize, cx: &mut Context<Self>) -> Div {
+        if !backend::can_choose_game_architecture() {
+            return div();
+        }
+        let t = self.theme;
+        let picker = segments(
+            "game-architecture",
+            &[
+                (backend::GameArchitecture::Auto, "Automatic"),
+                (backend::GameArchitecture::X64, "x64"),
+                (backend::GameArchitecture::Arm64, "ARM64"),
+            ],
+            self.settings.game_architecture,
+            &t,
+            {
+                let this = cx.entity().downgrade();
+                move |choice, _, cx| {
+                    let _ = this.update(cx, |this, cx| {
+                        if this.settings.game_architecture == choice {
+                            return;
+                        }
+                        this.settings.game_architecture = choice;
+                        this.save_settings();
+                        // The release and update lists contain the selected game's assets.
+                        this.releases = Load::Loading;
+                        this.updates = backend::Updates::default();
+                        this.fetch_startup_releases();
+                        cx.notify();
+                    });
+                }
+            },
+        );
+        index_row(
+            n,
+            tr("Game architecture"),
+            Some(
+                div()
+                    .child(tr(
+                        "Automatic follows this launcher's architecture. On Windows ARM, choose x64 or ARM64. Releases without ARM64 use the signed x64 build.",
+                    ))
+                    .into_any_element(),
+            ),
+            Some(picker.into_any_element()),
+            &t,
+        )
+    }
+
     fn game_args_row(&self, n: usize, cx: &mut Context<Self>) -> Div {
         let t = self.theme;
         let focused = self.args_focused;
@@ -4835,6 +4894,22 @@ impl Launcher {
                         .child(progress_bar(None, &t))
                         .child(text(theme::MICRO).text_color(t.muted).child("Removing…"))
                         .into_any_element()
+                } else if installed && backend::needs_game_architecture_install(&tag, &release) {
+                    let mut b = button(
+                        format!("install-selected-architecture-{tag}"),
+                        tr("Install selected build"),
+                        Kind::Secondary,
+                        &t,
+                    );
+                    if self.installing.is_some() {
+                        b = disabled(b);
+                    } else {
+                        b = b.on_click(cx.listener(move |this, _: &ClickEvent, _, cx| {
+                            this.install(&release);
+                            cx.notify();
+                        }));
+                    }
+                    b.into_any_element()
                 } else if installed {
                     self.version_actions(&tag, selected, cx).into_any_element()
                 } else if release.asset.is_none() {

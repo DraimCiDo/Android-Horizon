@@ -67,8 +67,9 @@ Microsoft session to replace the token held by the running game.
 
 ## Upstream synchronization
 
-Android 0.4.0 incorporates Horizon main at `63eccfc3559807d338e93ca2fec1e1fdc077a721`
-(November 4, 2026). The current gameplay/client-library split and mod API are
+Android 0.4.4 incorporates Horizon Nightly 2026-11-05 at
+`f319701e8c9ab657ff562250b3ba07b2d654e3bc`, the source published by the upstream
+`nightly` release when this update was prepared. The current gameplay/client-library split and mod API are
 compiled by the Android crate too. The old experimental Fast Opaque Pass was
 replaced by the current upstream renderer; GPU occlusion culling remains opt-in
 on Android. Exact source provenance is recorded in `packaging/android/upstream.json`.

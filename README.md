@@ -1,162 +1,240 @@
 <p align="center">
-  <img src="docs/media/banner.webp" alt="The Horizon website: the game you know, rebuilt in Rust" width="100%">
+  <img src="packaging/android/res/mipmap-xxxhdpi/ic_launcher.png" width="96" alt="Horizon Android">
 </p>
 
-Android / Samsung S25 Ultra: [build and install](docs/samsung-s25-ultra.md).
+<h1 align="center">Horizon Android</h1>
 
 <p align="center">
-  <a href="https://github.com/horizon-rust/horizon/actions/workflows/ci.yml"><img src="https://github.com/horizon-rust/horizon/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <img src="https://img.shields.io/badge/Minecraft-Java%2026.3-5D9C3F" alt="Minecraft Java 26.3">
-  <img src="https://img.shields.io/badge/Rust-stable-B7410E?logo=rust&logoColor=white" alt="Rust">
-  <img src="https://img.shields.io/badge/vanilla%20parity-100%25-F0795A" alt="Vanilla parity 100%">
-  <a href="#project-status"><img src="https://img.shields.io/badge/player--visible%20gaps-0%20open-F0795A" alt="Player-visible gaps open"></a>
-  <img src="https://img.shields.io/badge/platform-Linux%20%7C%20macOS%20%7C%20Windows-2A2470" alt="Linux, macOS and Windows">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-3B2F7E" alt="MIT license"></a>
+  Minecraft: Java Edition 26.3 на Android · Rust / ARM64<br>
+  Основное устройство для адаптации — Samsung Galaxy S25 Ultra
 </p>
 
 <p align="center">
-  <a href="https://playhorizon.dev"><b>Website</b></a> ·
-  <a href="#download"><b>Download</b></a> ·
-  <a href="https://playhorizon.dev/docs/"><b>Documentation</b></a> ·
-  <a href="https://github.com/horizon-rust/horizon/releases"><b>Release notes</b></a> ·
-  <a href="ROADMAP.md"><b>Roadmap</b></a> ·
-  <a href="#project-status"><b>Project status</b></a> ·
-  <a href="#contributing"><b>Contributing</b></a>
+  <a href="https://github.com/DraimCiDo/Android-Horizon/releases/tag/android-0.4.4-s25">Релиз 0.4.4</a> ·
+  <a href="https://github.com/DraimCiDo/Android-Horizon/releases/download/android-0.4.4-s25/horizon-0.4.4-s25-ultra-arm64.apk">Скачать APK</a> ·
+  <a href="https://github.com/DraimCiDo/Android-Horizon/actions/workflows/android.yml">Сборки</a> ·
+  <a href="https://github.com/horizon-rust/horizon">Оригинальный Horizon</a>
 </p>
 
-# Horizon
+Неофициальный Android-порт [Horizon](https://github.com/horizon-rust/horizon) —
+реализации Minecraft: Java Edition на Rust. Игра работает как нативное ARM64-приложение;
+Java Runtime на телефоне не требуется. Android-лаунчер, сенсорное управление,
+подготовка ресурсов и работа с файлами адаптированы для мобильного устройства.
 
-Minecraft: Java Edition 26.3, rewritten in Rust. Same worlds, same rules, same terrain, checked against the Java game by more than 300 differential harnesses. Free, open source and unofficial.
+Проект экспериментальный. Игровой запуск на S25 Ultra подтверждён пользователем
+на предыдущих сборках; каждое обновление движка и новые жесты требуют проверки
+на устройстве. Успешная сборка сама по себе не гарантирует отсутствие игровых ошибок.
 
-> Not an official Minecraft product, nor approved by or associated with Mojang or Microsoft. Horizon contains no Minecraft code, assets or data: you need your own copy of Java Edition 26.3.
+## Версия и основа
 
-## Download
+| Компонент | Текущая версия |
+| --- | --- |
+| Android-приложение | **0.4.4**, versionCode 24 |
+| Minecraft: Java Edition | **26.3** |
+| Horizon | **Nightly 2026-11-05 · f319701** |
+| Полная ревизия движка | [`f319701e8c9ab657ff562250b3ba07b2d654e3bc`](https://github.com/horizon-rust/horizon/commit/f319701e8c9ab657ff562250b3ba07b2d654e3bc) |
+| Архитектура / Android | **arm64-v8a / Android 8.0+**, API 26 |
 
-Get **the Horizon launcher** from [playhorizon.dev](https://playhorizon.dev) or [the launcher releases](https://github.com/horizon-rust/horizon/releases?q=launcher&expanded=true) (Linux x86-64, macOS on Apple Silicon, macOS on Intel from the next Nightly, Windows x64). It installs and updates the game, prepares its files from your copy of Minecraft, and updates itself.
+Обновление 0.4.4 объединяет исходники с ревизией, опубликованной в
+[официальном nightly](https://github.com/horizon-rust/horizon/releases/tag/nightly).
+Тег `nightly` перемещается; наша сборка закрепляет конкретный commit, а не следует
+ему автоматически. Машиночитаемая версия основы: [upstream.json](packaging/android/upstream.json).
+Android-номер версии независим от нумерации оригинального Horizon.
 
-**You need** a Microsoft account that owns Java Edition ([why](docs/microsoft-account.md)) and a GPU with Vulkan or OpenGL 3.3 (Linux), Vulkan or DirectX 12 (Windows), or a Mac (Apple Silicon, or Intel from the next Nightly). An existing Minecraft install (official launcher, Prism, MultiMC...) is reused; without one, Play downloads 26.3 from Mojang for your account. Step by step: [Install and first launch](https://playhorizon.dev/docs/install).
+## Установка
 
-<table>
-  <tr>
-    <td width="50%"><img src="docs/media/launcher-play.webp" alt="The launcher's Home page: the selected instance ready to play, the version picker, Join a friend and the instance's tabs"></td>
-    <td width="50%"><img src="docs/media/launcher-settings.webp" alt="The launcher's Settings page: Microsoft account, offline name, updates, appearance and accent colour"></td>
-  </tr>
-</table>
+1. Скачайте **`horizon-0.4.4-s25-ultra-arm64.apk`** из
+   [релиза](https://github.com/DraimCiDo/Android-Horizon/releases/tag/android-0.4.4-s25).
+   Рядом находится файл `SHA256SUMS` для проверки загрузки.
+2. Разрешите установку APK выбранному браузеру или файловому менеджеру и установите приложение.
+3. Откройте Horizon и нажмите **«Подготовить игру»**. Первый запуск распакует ресурсы из APK.
+4. После подготовки игра запускается в альбомной ориентации. Лаунчер и подготовка — в портретной.
 
-## What works today
+**Ресурсы находятся внутри APK.** Отдельный `horizon-derived.zip`, компьютер или
+дополнительное скачивание файлов при первом запуске опубликованной сборки не нужны.
+APK занимает около 440 МБ. Для установки, временной распаковки и ресурсов
+рекомендуется иметь не менее 2 ГБ свободного места, дополнительно к месту под миры
+и пакеты. Перед подготовкой приложение проверяет требуемый объём по метаданным сборки.
 
-- **The game:** vanilla world generation, mobs, villagers, raids, redstone, every command, the HUD and the recipe book, on vanilla saves. Worlds from 1.8 to 26.2 are upgraded. [Status](#project-status).
-- **Extras:** new menus, graphics presets, distant terrain up to 1024 chunks, controllers, zoom, minimap and more, off by default where they change the vanilla look. [Settings](https://playhorizon.dev/docs/settings).
-- **Packs:** resource packs, and data packs with functions, predicates, item modifiers and world generation.
-- **Multiplayer:** invite friends with a code, Open to LAN, join servers (online mode included). [Multiplayer](https://playhorizon.dev/docs/multiplayer).
-- **Mods:** content mods (blocks, items, data) and native Rust mods, built by the launcher with nothing to install. Java mod jars do not run. [Mods](https://playhorizon.dev/docs/mods).
+Поддерживаются ARM64-устройства. Совместимость других моделей и GPU не гарантируется;
+главная конфигурация — **Galaxy S25 Ultra / Snapdragon 8 Elite / Adreno 830**.
 
-In the Rust client, with vanilla assets and no mods or shaders:
+## Обновление и сохранность миров
 
-<table>
-  <tr>
-    <td colspan="2"><img src="docs/media/sunset.webp" alt="Sunset over a savanna river valley and a plains village"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/media/survival.webp" alt="Survival at dusk: a zombie walks up, with the hotbar, health, hunger and experience"></td>
-    <td width="50%"><img src="docs/media/settings.webp" alt="Vanilla's Video Settings screen with Horizon's own buttons at the top: Horizon Graphics and Advanced Graphics"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/media/village.webp" alt="A plains village among savanna hills, with farms, villagers and an iron golem"></td>
-    <td width="50%"><img src="docs/media/nether.webp" alt="A crimson forest in the Nether with a zombified piglin"></td>
-  </tr>
-</table>
+**Перед удалением приложения сохраните данные за пределами папки Horizon.**
+Удаление приложения удаляет и его данные.
 
-## Host a server
+Текущие CI-релизы подписываются временным ключом. Android может отказаться
+устанавливать новый APK поверх старого и потребовать переустановку.
 
-The launcher's **Servers** page creates, starts, backs up and updates a server, and invites friends over Tailscale. On a VPS, `horizon-server` installs with one command and needs no Java. [Host a server](https://playhorizon.dev/docs/hosting) ([reference](docs/hosting.md)).
+- В версии **0.4.2 и новее**: **«Файлы → Сохранить резервную копию»**.
+  Сохраните ZIP в «Загрузки», другую папку вне Horizon или выбранное облако.
+- В **0.4.1**: через системное приложение **«Файлы → Horizon»** скопируйте папку
+  `saves` за пределы данных приложения. В этой версии ещё нет ZIP-копирования.
+- После переустановки используйте **«Файлы → Восстановить из ZIP»** для архивов Horizon.
+  Ранее скопированную вручную папку `saves` верните через файловый менеджер.
 
-## Modpacks
+Резервная копия включает миры, скриншоты, наборы ресурсов и шейдеров, скин,
+настройки игрока и `touch_layout.json`. Ресурсы игры, Microsoft-токены, нативные моды
+и настройки отдельных модов в неё не входят.
 
-The launcher imports Modrinth and CurseForge packs and plays the mods Horizon can carry over: today, content mods made of data and assets, not Java code. [Modpacks](https://playhorizon.dev/docs/modpacks).
+При восстановлении существующие миры и пакеты сохраняются: совпадающие имена
+получают суффикс ` (imported N)`. Существующие настройки остаются, отсутствующие —
+добавляются. Архив проверяется и полностью распаковывается во временную папку
+до добавления данных. Формат рассчитан на ZIP-копии Horizon, не на произвольную
+папку Minecraft; предел — 8 ГБ распакованных данных.
 
-## Agent control
+[Подробности резервных копий](docs/android-launcher.md).
 
-AI agents and scripts can play Horizon. `horizon-ctl`, shipped with the game, reads its state as JSON and acts like a player; `horizon-ctl mcp` serves the same commands over MCP.
+## Лаунчер
+
+| Раздел | Возможности |
+| --- | --- |
+| **Играть** | Подготовка и запуск игры, профиль, настройки управления |
+| **Файлы** | Папка игры, количество миров, свободное место, резервные копии и восстановление |
+| **Сборка** | Версия APK и движка, устройство, статус настройки Microsoft, ссылка на релизы |
+| **Профиль** | Ник, PNG-скин и модель рук, драйвер Vulkan, установка модов из файла |
+
+Папка данных обычно находится в
+`Android/data/dev.horizonlab.horizon/files/`. Из-за ограничений Android удобнее
+открывать её кнопкой лаунчера либо через источник **Horizon** в системном приложении «Файлы».
+
+## Сенсорное управление и интерфейс
+
+Откройте **«Играть → Управление и интерфейс»**. Из запущенной игры тот же экран
+доступен через профиль. Нажмите «Сохранить», вернитесь в игру и уберите пальцы
+с экрана: настройки применятся примерно в течение секунды, без перезапуска.
+
+Доступны:
+
+- Чувствительность камеры **25–300%**, вертикальная инверсия и поворот камеры пальцем на кнопке.
+- Мёртвая зона джойстика **0–40%** и чувствительность, учитывающая долю ширины экрана.
+- Размер кнопок **70–160%**, прозрачность и отступы от краёв.
+- Схемы **«Обычная / Bedrock / Своя»** и масштаб меню, инвентаря и HUD.
+- Джойстик, прыжок, приседание, спринт, атака, использование предмета, вторая рука,
+  инвентарь, выбрасывание, чат и экранная клавиатура.
+- Перемещение, изменение размера и скрытие отдельных кнопок через игровую шестерёнку.
+
+В инвентаре касание — обычный клик, удержание от **450 мс** без перетаскивания —
+правый клик: взять половину стопки или положить один предмет. Перемещение пальца
+задействует обычный путь перетаскивания контейнера. Списки миров и серверов
+прокручиваются пальцем; отпускание после прокрутки не выбирает строку.
+
+Быстрые нажатия сохраняются до обработки игровым вводом. Второй палец не перехватывает
+джойстик и не отпускает чужую удерживаемую кнопку. Системная отмена касания не
+создаёт короткую атаку или использование. Сохранённая пользовательская расстановка
+сохраняется; после сильного увеличения кнопок их можно раздвинуть редактором.
+
+[Подробное описание управления](docs/android-controls.md).
+
+## Galaxy S25 Ultra и графика
+
+Для Samsung `SM-S938*` при отсутствии файлов настроек создаётся начальный профиль:
+
+| Параметр | Значение по умолчанию |
+| --- | --- |
+| FPS / VSync | 60 / включён |
+| Дальность / симуляция | 8 / 5 чанков |
+| Масштаб рендера | 75% |
+| Потоки / обновления чанков за кадр | 4 / 4 |
+| Бюджет загрузки геометрии | 4096 КиБ |
+| Облака / HDR | выключены |
+| FXAA | включён |
+
+Существующие настройки не перезаписываются. Это стартовый профиль, не обещание
+постоянных 60 FPS: результат зависит от мира, дальности, пакетов, температуры и драйвера.
+Менять настройки можно в самой игре.
+
+Рендеринг использует wgpu с Vulkan и поддержкой GLES. В профиле доступна установка
+Turnip; совместимость драйверов зависит от устройства, а после неудачного запуска
+есть возврат на системный драйвер. Дополнительный драйвер для начала игры не обязателен.
+
+[Профиль S25 Ultra и технические проверки](docs/samsung-s25-ultra.md).
+
+## Microsoft и сетевая игра
+
+**Microsoft-вход в текущей сборке не настроен.** Код авторизации присутствует,
+но нет зарегистрированного для проекта Microsoft-приложения с разрешённым доступом
+к Minecraft API. Публичный client ID должен настроить автор сборки; игрокам
+не нужно вводить ID своего Minecraft-аккаунта.
+
+Одиночная игра и подключения, не требующие Microsoft-сессии, от этой настройки
+не зависят. Для серверов с проверкой лицензии нужна работающая авторизация
+и соответствующий аккаунт Minecraft: Java Edition.
+
+[Настройка авторизации разработчиком](docs/android-microsoft.md).
+Не передавайте пароли, client secret, коды входа и токены через issues или чат.
+
+## Моды и пакеты
+
+- **`.hmod`** — контентные моды Horizon.
+- **`.hnmod`** — нативный пакет; для работы без пересборки APK нужна совместимая
+  Android ARM64-библиотека с интерфейсом `horizon-native-abi`.
+- Пакет с исходниками для настольного лаунчера сам по себе не становится Android-модом.
+  Например, исходный DraimHorizon требует отдельной сборки/адаптации клиента.
+- Fabric/Forge/NeoForge `.jar` не запускаются как моды Horizon.
+
+Установка доступна из профиля через выбор файла. Встроенного установщика модов
+из GitHub и компилятора исходных модов на телефоне в этой версии нет.
+Нативный мод выполняет код с правами приложения — подтверждайте установку только
+для доверенных авторов. Миры с модами могут требовать те же моды после восстановления.
+
+[Формат и сборка Android-модов](docs/android-mods.md) ·
+[Система модов Horizon](docs/mods.md).
+
+## Сборка из исходников
+
+Самый воспроизводимый путь — workflow [Android APK](.github/workflows/android.yml):
+**Actions → Android APK → Run workflow**, ветка `android-port`. Без `release_tag`
+он создаёт APK-артефакт; с тегом `android-*` публикует релиз только после проверок.
+
+Локальная сборка требует Linux, Rust с `aarch64-linux-android`, `cargo-ndk`,
+Android SDK 35 / Build Tools 35.0.0 / NDK 27.2.12479018, JDK 25 для подготовки
+ресурсов и JDK 21 для Android Java-моста. Gradle не используется.
 
 ```sh
-horizon-ctl launch --world Survival --seed 5 --wait   # finds the version the launcher installed
-horizon-ctl state                                       # position, health, food, target, screen...
-horizon-ctl find-block birch_log                        # the nearest logs
-horizon-ctl goto -0.5 65 -2.5 --near 2.5                # walks there along a path
-horizon-ctl break -1 65 -3                              # mines it; replies with the drops
-horizon-ctl open-inventory && horizon-ctl click-slot 0  # menus: slots, buttons by label, text fields
+git clone --branch android-port https://github.com/DraimCiDo/Android-Horizon.git
+cd Android-Horizon
+rustup target add aarch64-linux-android
+cargo install cargo-ndk --locked
+# Сначала подготовьте полный пакет ресурсов по шагам workflow.
+# ANDROID_HOME и ANDROID_NDK_HOME должны указывать на установленный SDK/NDK.
+HORIZON_REQUIRE_BUNDLE=1 PROFILE=release bash packaging/android/build_apk.sh
+# Результат: target/android/horizon.apk
 ```
 
-Commands block until done and reply with the result; `horizon-ctl help` lists them all. [Agent control](docs/native-client.md#agent-control-horizon-ctl-and-mcp).
+`tools/android_bundle.py` получает закреплённые входные файлы, проверяет их хеши;
+`horizon-prepare --prepare --complete` готовит данные, а `--check` проверяет полноту.
+После упаковки CI проверяет подпись APK, стартовую Activity, SHA-256 встроенного
+архива ресурсов и выравнивание ELF-сегментов для страниц памяти **16 КиБ**.
 
-## Build from source
+Сгенерированные ресурсы и файлы Mojang хранятся в игнорируемых `.local/` и `target/`,
+а не в Git. Сборка кода без полного пакета ресурсов — вариант для разработки,
+не эквивалент опубликованному APK.
 
-Needs Rust 1.90+, Python 3.10+, JDK 25, and on Linux `libasound2-dev libudev-dev`. `horizon-prepare` builds the game's resources from **your own copy** of Java Edition 26.3 (checked against `research-lock.json`) and never downloads it:
+[Технический Android-гайд](ANDROID.md) · [Workflow](.github/workflows/android.yml) ·
+[Оригинальная документация проекта](README.upstream.md).
 
-1. **Client:** play 26.3 once in the official launcher. Horizon reads `~/.minecraft` (or `--minecraft-dir` / `HORIZON_MINECRAFT_DIR`).
-2. **Server jar:** the 26.3 server jar (`downloads.server.url` in `versions/26.3/26.3.json`), passed once with `--server-jar` or `HORIZON_SERVER_JAR`.
+## Об ошибках
 
-```sh
-git clone https://github.com/horizon-rust/horizon.git
-cd horizon
-cargo run --release -p horizon-prepare -- --prepare --server-jar ~/Downloads/server.jar   # needs JDK 25
-cargo run --release -p horizon-prepare -- sounds   # optional: sounds from your launcher install
-cargo run --release -p horizon-client
-```
+В [issue](https://github.com/DraimCiDo/Android-Horizon/issues) укажите версию APK,
+модель телефона, версию Android, выбранный драйвер, действие перед ошибкой
+и способ её повторить. Скриншот полезен для проблем интерфейса.
+Не прикладывайте файлы аккаунта или токены. Для новой nightly важно указывать
+именно нашу Android-версию и закреплённую ревизию движка.
 
-Prepared files land in the gitignored `.local/`: never commit or share them. Options, controls and architecture: [the native client guide](docs/native-client.md); all developer docs: [docs/README.md](docs/README.md).
+## Авторы и лицензии
 
-## Roadmap
+Основа — [horizon-rust/horizon](https://github.com/horizon-rust/horizon),
+MIT, Ludovic Marie и участники Horizon. Начальный Android-порт —
+[Rayan-XOO/horizon](https://github.com/Rayan-XOO/horizon).
+Android-адаптации, профиль S25 Ultra, лаунчер и управление развиваются в этом форке.
 
-What is in progress, what comes next and where to help: [ROADMAP.md](ROADMAP.md), or [playhorizon.dev/hub](https://playhorizon.dev/hub) with the work board and what shipped.
+Функции Android-лаунчера и резервных копий реализованы самостоятельно после
+сравнения публичной документации другого порта; его GPL-компоненты управления
+и шрифты не переносились. [Подробности сравнения](docs/android-launcher.md#comparison-source).
 
-## Contributing
-
-Issues and pull requests are welcome: read [CONTRIBUTING.md](CONTRIBUTING.md) (vanilla first, small pull requests). Questions: [Discord](https://discord.gg/playhorizon). Before a pull request, run the self-check and paste its output:
-
-```sh
-git config core.hooksPath .githooks
-python3 tools/pr_ready.py
-```
-
-It runs rustfmt, clippy, the touched crates' tests, the Python tests, the public-tree check and the vanilla harnesses your change affects. Never commit game files, decompiled source or prepared resources.
-
-## Project status
-
-**Player-visible gaps: 0 open** of the 833 the [port ledger](tools/port_ledger.py) found, reading every vanilla 26.3 method against Horizon's code: vanilla behaviour a player would notice that Horizon doesn't have yet. By area: Animals [0](https://github.com/horizon-rust/horizon/issues/3512); Monsters and bosses [0](https://github.com/horizon-rust/horizon/issues/3513); Entities, projectiles, vehicles and decorations [0](https://github.com/horizon-rust/horizon/issues/3514); Items, enchantments and inventories [0](https://github.com/horizon-rust/horizon/issues/3515); Blocks, redstone and fluids [0](https://github.com/horizon-rust/horizon/issues/3516); World, world generation and saves [0](https://github.com/horizon-rust/horizon/issues/3517); Screens, HUD and client packets [0](https://github.com/horizon-rust/horizon/issues/3518); Entity and block rendering, models [0](https://github.com/horizon-rust/horizon/issues/3519); Server and players on the server [0](https://github.com/horizon-rust/horizon/issues/3520); Mob AI, villagers and raids [0](https://github.com/horizon-rust/horizon/issues/3521). This number goes down as gaps close (`tools/parity_gaps.py`); the harness results below say that what is tested matches.
-
-The table is the project's own audit: every subsystem matches vanilla in every harness that compares it. 100% means 100% of what the harnesses compare, not that nothing else differs.
-
-### Java parity: 100%
-
-Scores: 0 (absent), 0.25 (started), 0.5 (playable, major features missing), 0.75 (mostly complete) or 1 (complete and verified by differential tests); the percentage is their average. Last audited 2026-10-13: the harnesses pass on Linux and macOS. The [port ledger](tools/port_ledger.py) adds a method-by-method view of what is ported.
-
-| Subsystem | Score | Main gaps |
-| --- | ---: | --- |
-| Window, input and game loop | 1 | None: game loop, options, camera, auto-jump, toggle sprint/sneak and frame limiter match |
-| Assets and resources | 1 | None: item models match over 196,290 stacks; the resource pack screen over 3,000 sessions |
-| Network protocol and multiplayer | 1 | None: joins vanilla servers; the dedicated server matches vanilla's files, login, configuration, play and command tree; LAN discovery over 462 cases (offline mode only) |
-| Chunk storage and palettes | 1 | None: client and saves share paletted containers, identical to vanilla over 266 scenarios |
-| Section meshing | 1 | None: 112 scenes and over a million quads identical to vanilla |
-| Rendering | 1 | None: entity models, block entity renderers (407 cases) and animations (296), HUD overlays (2,200 states), the recipe book (600), player list, subtitles and world border match |
-| Lighting | 1 | None: saved and relit light matches vanilla, slabs and stairs included |
-| World generation | 1 | None: 2,352 whole chunks over 225 structure sites, in all three dimensions, identical to vanilla |
-| Region files and saves | 1 | None: saves round-trip with vanilla; worlds from 1.8 to 26.2 upgrade as vanilla's DataFixers do |
-| Entities and physics | 1 | None: attributes, spawn rules, natural spawning (15,500 cases), raids and patrols (1,900), `finalizeSpawn` (24,000) and mob AI (92 scenarios) match |
-| Interaction and inventory | 1 | None: menu clicks over 8,000 sequences; recipe book placement (6,000), buttons (1,200), saved book (1,500), loom and crafter screens (1,600) |
-| Menus, HUD and chat | 1 | None: every command (758 over 39,685 inputs), scoreboards (81,000 operations), the player list (872,000 draw calls), chat and its suggestions (3,000 sessions) match |
-| Audio | 1 | None: the sound engine, sound events, music, situational music, ambience and subtitles match vanilla |
-| Block behaviours and ticking | 1 | None: block updates, random ticks, redstone, dispensers (6,000 cases), crafters (4,000), container spills (4,000), copper golems and the sculk family (435 scenarios) match |
-
-### Known issues
-
-Skins served over https show the default skin unless already cached; pack icons show the unknown-pack texture in game; item tooltips lack attribute lines.
-
-## Licence
-
-[MIT](LICENSE), for the project's original work; dependencies keep their own licences ([notices](THIRD_PARTY_NOTICES.md)). Minecraft is a trademark of Mojang Synergies AB; its code and assets belong to Mojang and Microsoft under the [Minecraft EULA](https://www.minecraft.net/en-us/eula).
-
-## Author
-
-Made by [Ludovic Marie](https://lu4ovic.com) ([@ludovic111](https://github.com/ludovic111)).
+Код распространяется по [MIT](LICENSE); сторонние компоненты перечислены в
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md). Лицензия кода не распространяется
+на ресурсы Minecraft: у них отдельные условия правообладателя. Используйте игровые
+файлы, на использование которых у вас есть право. Проект не связан с Mojang или Microsoft.

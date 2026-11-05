@@ -119,8 +119,8 @@ public class LauncherActivity extends Activity {
         Ui.section(card, Ui.t("ПРИЛОЖЕНИЕ", "APPLICATION"));
         card.addView(Ui.text(this, "Horizon Android " + version(), 21, Ui.TEXT, true));
         card.addView(Ui.text(this, android.os.Build.MANUFACTURER + " " + android.os.Build.MODEL + " · Android " + android.os.Build.VERSION.RELEASE, 14, Ui.MUTED, false));
-        card.addView(Ui.text(this, Ui.t("Движок Horizon: 63eccfc · Minecraft 26.3\nARM64 · ресурсы внутри APK · поддержка страниц памяти 16 КБ",
-                "Horizon engine: 63eccfc · Minecraft 26.3\nARM64 · bundled resources · 16 KiB memory pages"), 14, Ui.MUTED, false));
+        card.addView(Ui.text(this, Ui.t("Движок Horizon: f319701 · Minecraft 26.3\nARM64 · ресурсы внутри APK · поддержка страниц памяти 16 КБ",
+                "Horizon engine: f319701 · Minecraft 26.3\nARM64 · bundled resources · 16 KiB memory pages"), 14, Ui.MUTED, false));
         Ui.section(card, Ui.t("ВХОД MICROSOFT", "MICROSOFT SIGN-IN"));
         boolean configured = !Msa.clientId(this).isEmpty();
         card.addView(Ui.text(this, configured ? Ui.t("Приложение Microsoft настроено. Войти можно в профиле.", "Microsoft app is configured. Sign in from the profile.")
