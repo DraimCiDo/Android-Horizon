@@ -496,10 +496,15 @@ impl Game<'_> {
     /// The left stick as the move vector, while playing.
     pub(super) fn pad_move(&self) -> Option<[f32; 2]> {
         let settings = &self.settings.controller;
-        if !settings.enabled || self.pad_in_menu() || !self.pad_focused() {
+        let touch = self.touch_move_active();
+        if (!settings.enabled && !touch) || self.pad_in_menu() || !self.pad_focused() {
             return None;
         }
-        gamepad::move_vector(self.pad.state.left, settings.move_deadzone)
+        // The touch joystick has already applied its own configured deadzone.
+        gamepad::move_vector(
+            self.pad.state.left,
+            if touch { 0.0 } else { settings.move_deadzone },
+        )
     }
 
     /// The right stick turns the view, once per frame (`Entity.turn`).

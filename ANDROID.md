@@ -3,6 +3,12 @@
 Galaxy S25 Ultra: [device profile, APK build and validation](docs/samsung-s25-ultra.md).
 
 
+## Touch controls and interface (0.4.3+)
+
+Open **Play → Controls and interface** for sensitivity, button sizing, joystick
+deadzone and interface scale. Inventory long presses act as right clicks; world
+and server lists support finger scrolling. See [touch controls](docs/android-controls.md).
+
 ## Android launcher (0.4.2+)
 
 The portrait launcher provides Play, Files and Build pages, profile access and

@@ -15,6 +15,8 @@
 //!
 //! A focused text field brings up the soft keyboard (`android_ime`).
 use super::Game;
+#[path = "touch_math.rs"]
+mod math;
 #[cfg(target_os = "android")]
 use horizon_client::osk;
 use horizon_client::{
@@ -39,6 +41,13 @@ const LAYOUT_FILE: &str = "touch_layout.json";
 enum Finger {
     /// Acting as the mouse in a menu.
     Pointer,
+    Menu {
+        start: [f64; 2],
+        last: [f64; 2],
+        since: Instant,
+        dragging: bool,
+        scroll: bool,
+    },
     /// The joystick; the knob's position (GUI pixels).
     Stick,
     /// Turning the view; tap = attack an entity or use, hold = attack.
@@ -80,6 +89,7 @@ pub(super) enum Id {
     Keyboard,
     Inventory,
     Drop,
+    Swap,
     F1,
     F2,
     F3,
@@ -87,7 +97,7 @@ pub(super) enum Id {
     Edit,
 }
 
-const IDS: [Id; 16] = [
+const IDS: [Id; 17] = [
     Id::Stick,
     Id::Jump,
     Id::Sneak,
@@ -99,6 +109,7 @@ const IDS: [Id; 16] = [
     Id::Keyboard,
     Id::Inventory,
     Id::Drop,
+    Id::Swap,
     Id::F1,
     Id::F2,
     Id::F3,
@@ -128,6 +139,16 @@ pub(super) enum Preset {
     Custom,
 }
 
+fn one() -> f32 {
+    1.0
+}
+fn margin() -> f32 {
+    12.0
+}
+fn deadzone() -> f32 {
+    0.12
+}
+
 fn yes() -> bool {
     true
 }
@@ -143,6 +164,18 @@ pub(super) struct TouchLayout {
     /// Off: buttons keep their finger to themselves.
     #[serde(default = "yes")]
     pass_through: bool,
+    #[serde(default = "one")]
+    sensitivity: f32,
+    #[serde(default)]
+    invert_y: bool,
+    #[serde(default = "one")]
+    button_scale: f32,
+    #[serde(default = "margin")]
+    safe_margin: f32,
+    #[serde(default = "deadzone")]
+    stick_deadzone: f32,
+    #[serde(default)]
+    gui_scale: Option<u32>,
 }
 
 impl Default for TouchLayout {
@@ -179,8 +212,9 @@ impl TouchLayout {
             (Id::Chat, at(w / 2.0 - 12.0, 11.0, 9.0)),
             (Id::Pause, at(w / 2.0 + 12.0, 11.0, 9.0)),
             (Id::Keyboard, off(w / 2.0 + 36.0, 11.0, 9.0)),
-            (Id::Inventory, at(bar + 13.0, h - 11.0, 10.0)),
-            (Id::Drop, off(bar + 13.0, h - 34.0, 10.0)),
+            (Id::Inventory, at(bar + 26.0, h - 12.0, 10.0)),
+            (Id::Drop, off(bar + 36.0, h - 64.0, 10.0)),
+            (Id::Swap, at(w - 116.0, h - 24.0, 12.0)),
             (Id::F1, off(12.0, 12.0, 8.0)),
             (Id::F2, off(31.0, 12.0, 8.0)),
             (Id::F3, off(50.0, 12.0, 8.0)),
@@ -192,6 +226,12 @@ impl TouchLayout {
             controls,
             preset: Preset::Bedrock,
             pass_through: true,
+            sensitivity: 1.0,
+            invert_y: false,
+            button_scale: 1.0,
+            safe_margin: 12.0,
+            stick_deadzone: 0.12,
+            gui_scale: None,
         }
     }
 
@@ -214,22 +254,29 @@ impl TouchLayout {
             (Id::Sprint, at(96.0, h - 86.0, 11.0)),
             (Id::Attack, at(w - 34.0, h - 96.0, 15.0)),
             (Id::Use, at(w - 72.0, h - 66.0, 14.0)),
-            (Id::Pause, at(w - 12.0, 12.0, 9.0)),
-            (Id::Chat, at(w - 34.0, 12.0, 9.0)),
-            (Id::Keyboard, at(w - 56.0, 12.0, 9.0)),
-            (Id::Inventory, at(bar + 13.0, h - 11.0, 10.0)),
-            (Id::Drop, at(bar + 13.0, h - 34.0, 10.0)),
-            (Id::F1, at(12.0, 12.0, 8.0)),
-            (Id::F2, at(31.0, 12.0, 8.0)),
-            (Id::F3, at(50.0, 12.0, 8.0)),
-            (Id::F5, at(69.0, 12.0, 8.0)),
-            (Id::Edit, at(90.0, 12.0, 8.0)),
+            (Id::Pause, at(w - 24.0, 24.0, 11.0)),
+            (Id::Chat, at(w - 50.0, 24.0, 11.0)),
+            (Id::Keyboard, at(w - 76.0, 24.0, 11.0)),
+            (Id::Inventory, at(bar + 26.0, h - 12.0, 10.0)),
+            (Id::Drop, at(bar + 36.0, h - 64.0, 10.0)),
+            (Id::Swap, at(w - 116.0, h - 24.0, 12.0)),
+            (Id::F1, at(24.0, 24.0, 8.0)),
+            (Id::F2, at(48.0, 24.0, 8.0)),
+            (Id::F3, at(72.0, 24.0, 8.0)),
+            (Id::F5, at(96.0, 24.0, 10.0)),
+            (Id::Edit, at(120.0, 24.0, 10.0)),
         ]);
         Self {
             opacity: 0.85,
             controls,
             preset: Preset::Standard,
             pass_through: true,
+            sensitivity: 1.0,
+            invert_y: false,
+            button_scale: 1.0,
+            safe_margin: 12.0,
+            stick_deadzone: 0.12,
+            gui_scale: None,
         }
     }
 
@@ -259,6 +306,18 @@ impl TouchLayout {
             layout.preset = preset;
             layout.opacity = saved.opacity.clamp(0.1, 1.0);
             layout.pass_through = saved.pass_through;
+            layout.sensitivity = math::bounded(saved.sensitivity, 0.25, 3.0, 1.0);
+            layout.invert_y = saved.invert_y;
+            layout.gui_scale = saved.gui_scale.map(|v| v.min(6));
+            layout.button_scale = math::bounded(saved.button_scale, 0.7, 1.6, 1.0);
+            layout.safe_margin = math::bounded(saved.safe_margin, 0.0, 32.0, 12.0);
+            layout.stick_deadzone = math::bounded(saved.stick_deadzone, 0.0, 0.4, 0.12);
+            for spec in layout.controls.values_mut() {
+                spec.x = math::bounded(spec.x, 0.0, 1.0, 0.5);
+                spec.y = math::bounded(spec.y, 0.0, 1.0, 0.5);
+                spec.size = math::bounded(spec.size, 5.0, 60.0, 12.0);
+                spec.opacity = math::bounded(spec.opacity, 0.1, 1.0, 1.0);
+            }
         }
         layout
     }
@@ -303,22 +362,22 @@ enum EditAction {
 
 /// The second row: the layout and how buttons share fingers with the camera.
 const PRESET_ACTIONS: [(EditAction, &str); 4] = [
-    (EditAction::Standard, "Standard"),
-    (EditAction::Bedrock, "Bedrock"),
-    (EditAction::Custom, "Custom"),
-    (EditAction::PassThrough, "Look: on"),
+    (EditAction::Standard, "horizon.touch.standard"),
+    (EditAction::Bedrock, "horizon.touch.bedrock"),
+    (EditAction::Custom, "horizon.touch.custom"),
+    (EditAction::PassThrough, "horizon.touch.look_on"),
 ];
 
 const EDIT_ACTIONS: [(EditAction, &str); 9] = [
-    (EditAction::SizeDown, "Size-"),
-    (EditAction::SizeUp, "Size+"),
-    (EditAction::FadeDown, "Alpha-"),
-    (EditAction::FadeUp, "Alpha+"),
-    (EditAction::AllFadeDown, "All-"),
-    (EditAction::AllFadeUp, "All+"),
-    (EditAction::Toggle, "Hide"),
-    (EditAction::Reset, "Reset"),
-    (EditAction::Save, "Save"),
+    (EditAction::SizeDown, "horizon.touch.size_down"),
+    (EditAction::SizeUp, "horizon.touch.size_up"),
+    (EditAction::FadeDown, "horizon.touch.fade_down"),
+    (EditAction::FadeUp, "horizon.touch.fade_up"),
+    (EditAction::AllFadeDown, "horizon.touch.all_down"),
+    (EditAction::AllFadeUp, "horizon.touch.all_up"),
+    (EditAction::Toggle, "horizon.touch.hide"),
+    (EditAction::Reset, "horizon.touch.reset"),
+    (EditAction::Save, "horizon.touch.save"),
 ];
 
 pub(super) struct Touches {
@@ -332,6 +391,9 @@ pub(super) struct Touches {
     /// Sprint toggled on; off again when the joystick is let go.
     sprinting: bool,
     layout: TouchLayout,
+    last_layout_check: Instant,
+    layout_modified: Option<std::time::SystemTime>,
+    applied_gui_scale: Option<u32>,
     /// The layout editor is open; the selected control.
     editing: bool,
     selected: Option<Id>,
@@ -367,6 +429,11 @@ impl Default for Touches {
             } else {
                 TouchLayout::default()
             },
+            applied_gui_scale: None,
+            last_layout_check: Instant::now(),
+            layout_modified: std::fs::metadata(LAYOUT_FILE)
+                .and_then(|m| m.modified())
+                .ok(),
             editing: false,
             selected: None,
             dirty: false,
@@ -390,7 +457,15 @@ struct Gui {
 impl Gui {
     fn place(&self, layout: &TouchLayout, id: Id) -> ([f32; 2], f32) {
         let s = layout.spec(id);
-        ([s.x * self.w, s.y * self.h], s.size)
+        math::place(
+            self.w,
+            self.h,
+            s.x,
+            s.y,
+            s.size,
+            layout.button_scale,
+            layout.safe_margin,
+        )
     }
     fn hotbar_x(&self) -> f32 {
         (self.w / 2.0 - 91.0).floor()
@@ -401,11 +476,11 @@ impl Gui {
     }
     /// The close (back) button over menus and containers, top right.
     fn close(&self) -> ([f32; 2], f32) {
-        ([self.w - 12.0, 12.0], 9.0)
+        ([self.w - 24.0, 24.0], 11.0)
     }
     /// The profile button (name, skin) on the title and pause screens, top left.
     fn profile(&self) -> ([f32; 2], f32) {
-        ([12.0, 12.0], 9.0)
+        ([24.0, 24.0], 11.0)
     }
     fn profile_hit(&self, p: [f32; 2]) -> bool {
         let (c, r) = self.profile();
@@ -434,27 +509,30 @@ impl Gui {
     }
     /// The editor's panel: a row of buttons a third of the way down.
     fn panel(&self) -> impl Iterator<Item = (EditAction, &'static str, [f32; 4])> {
-        let bw = 44.0f32;
-        let gap = 3.0;
-        let total = EDIT_ACTIONS.len() as f32 * (bw + gap) - gap;
+        let gap = 4.0;
+        let cols = (((self.w - 24.0) / 70.0) as usize).clamp(2, 5);
+        let bw = ((self.w - 24.0) / cols as f32 - gap).min(84.0);
+        let total = cols as f32 * (bw + gap) - gap;
         let x0 = ((self.w - total) / 2.0).floor();
-        let y = (self.h * 0.32).floor();
-        let pw = 66.0f32;
-        let ptotal = PRESET_ACTIONS.len() as f32 * (pw + gap) - gap;
-        let px0 = ((self.w - ptotal) / 2.0).floor();
+        let y = (self.h * 0.26).floor();
         EDIT_ACTIONS
             .into_iter()
+            .chain(PRESET_ACTIONS)
             .enumerate()
-            .map(move |(i, (a, l))| (a, l, [x0 + i as f32 * (bw + gap), y, bw, 16.0]))
-            .chain(
-                PRESET_ACTIONS
-                    .into_iter()
-                    .enumerate()
-                    .map(move |(i, (a, l))| {
-                        (a, l, [px0 + i as f32 * (pw + gap), y + 19.0, pw, 16.0])
-                    }),
-            )
+            .map(move |(i, (action, label))| {
+                (
+                    action,
+                    label,
+                    [
+                        x0 + (i % cols) as f32 * (bw + gap),
+                        y + (i / cols) as f32 * 26.0,
+                        bw,
+                        22.0,
+                    ],
+                )
+            })
     }
+
     fn panel_hit(&self, p: [f32; 2]) -> Option<EditAction> {
         self.panel()
             .find(|(_, _, r)| {
@@ -665,6 +743,40 @@ fn icon(batch: &mut HudBatch, atlas: &HudAtlas, id: Id, c: [f32; 2], r: f32, col
                 );
             }
         }
+        Id::Swap => {
+            line(
+                batch,
+                atlas,
+                [x - s, y - s * 0.4],
+                [x + s, y - s * 0.4],
+                1.5,
+                color,
+            );
+            line(
+                batch,
+                atlas,
+                [x - s, y + s * 0.4],
+                [x + s, y + s * 0.4],
+                1.5,
+                color,
+            );
+            line(
+                batch,
+                atlas,
+                [x + s * 0.4, y - s],
+                [x + s, y - s * 0.4],
+                1.5,
+                color,
+            );
+            line(
+                batch,
+                atlas,
+                [x - s * 0.4, y + s],
+                [x - s, y + s * 0.4],
+                1.5,
+                color,
+            );
+        }
         Id::Drop => {
             batch.fill(atlas, x - s * 0.15, y - s * 0.8, s * 0.3, s * 0.8, color);
             batch.fill_quad(
@@ -701,8 +813,40 @@ fn icon(batch: &mut HudBatch, atlas: &HudAtlas, id: Id, c: [f32; 2], r: f32, col
 }
 
 impl Game<'_> {
+    pub(super) fn touch_move_active(&self) -> bool {
+        cfg!(target_os = "android")
+            && self
+                .touch
+                .fingers
+                .values()
+                .any(|f| matches!(f, Finger::Stick))
+    }
+
+    /// Only list screens and containers defer a tap; sliders keep immediate dragging.
+    fn touch_deferred_menu(&self) -> Option<bool> {
+        if self.title.as_ref().is_some_and(|t| {
+            matches!(
+                t.mode,
+                horizon_client::title::Mode::Select { .. }
+                    | horizon_client::title::Mode::Multiplayer(_)
+            )
+        }) {
+            Some(true)
+        } else if matches!(
+            self.screen,
+            super::Screen::Inventory | super::Screen::Creative
+        ) {
+            Some(false)
+        } else {
+            None
+        }
+    }
+
     fn touch_gui(&self) -> Option<(Gui, f32)> {
         let batch = self.gui_scale()?;
+        if batch.width < 1.0 || batch.height < 1.0 || batch.scale <= 0.0 {
+            return None;
+        }
         Some((
             Gui {
                 w: batch.width,
@@ -769,6 +913,7 @@ impl Game<'_> {
         self.touch.fingers.clear();
         self.touch.knob = [0.0, 0.0];
         self.touch.trigger_release = [0; 2];
+        self.pad.taps.clear();
         self.touch.sprinting = false;
         let sneaking = self.touch.sneaking;
         self.pad.injected = Default::default();
@@ -867,28 +1012,18 @@ impl Game<'_> {
             }
         }
         if editing {
-            let title = match t.selected {
-                Some(id) => {
-                    let s = layout.spec(id);
-                    format!(
-                        "{id:?}: size {:.0}, alpha {:.0}%{} | all {:.0}%",
-                        s.size,
-                        s.opacity * 100.0,
-                        if s.visible { "" } else { ", hidden" },
-                        layout.opacity * 100.0
-                    )
-                }
-                None => format!(
-                    "Drag a control; tap one to pick it | all {:.0}% | Look: buttons {} the camera",
-                    layout.opacity * 100.0,
-                    if layout.pass_through {
-                        "also turn"
-                    } else {
-                        "don't turn"
-                    }
-                ),
+            let title = if let Some(id) = t.selected {
+                let spec = layout.spec(id);
+                format!(
+                    "{}: {:.0} · {:.0}%",
+                    horizon_client::lang::get("horizon.touch.selected"),
+                    spec.size,
+                    spec.opacity * 100.0
+                )
+            } else {
+                horizon_client::lang::get("horizon.touch.drag")
             };
-            let y = (gui.h * 0.32).floor() - 12.0;
+            let y = (gui.h * 0.26).floor() - 12.0;
             let tw = HudBatch::text_width(atlas, &title);
             batch.text(
                 atlas,
@@ -903,10 +1038,10 @@ impl Game<'_> {
                 if action == EditAction::Toggle
                     && t.selected.is_some_and(|id| !layout.spec(id).visible)
                 {
-                    label = "Show";
+                    label = "horizon.touch.show";
                 }
                 if action == EditAction::PassThrough && !layout.pass_through {
-                    label = "Look: off";
+                    label = "horizon.touch.look_off";
                 }
                 let current = matches!(
                     (action, layout.preset),
@@ -928,10 +1063,11 @@ impl Game<'_> {
                     1.0,
                     rgba(255, 255, 255, 120),
                 );
-                let tw = HudBatch::text_width(atlas, label);
+                let label = horizon_client::lang::get(label);
+                let tw = HudBatch::text_width(atlas, &label);
                 batch.text(
                     atlas,
-                    label,
+                    &label,
                     (r[0] + (r[2] - tw) / 2.0).floor(),
                     r[1] + 4.0,
                     0xFFFF_FFFF,
@@ -945,6 +1081,29 @@ impl Game<'_> {
     /// let go, a finger held still starts breaking, the soft keyboard follows
     /// text focus and its text goes to the focused field.
     pub(super) fn touch_frame(&mut self) {
+        if cfg!(target_os = "android")
+            && !self.touch.editing
+            && self.touch.fingers.is_empty()
+            && self.touch.last_layout_check.elapsed().as_secs() >= 1
+        {
+            self.touch.last_layout_check = Instant::now();
+            let changed = std::fs::metadata(LAYOUT_FILE)
+                .and_then(|m| m.modified())
+                .ok();
+            if changed != self.touch.layout_modified {
+                self.touch.layout = TouchLayout::load();
+                self.touch.layout_modified = changed;
+                self.touch.applied_gui_scale = None;
+            }
+        }
+        if cfg!(target_os = "android")
+            && let Some(scale) = self.touch.layout.gui_scale
+            && self.touch.applied_gui_scale != Some(scale)
+        {
+            self.touch.applied_gui_scale = Some(scale);
+            self.settings.gui_scale = scale;
+            horizon_client::hud::GUI_SCALE.store(scale, std::sync::atomic::Ordering::Relaxed);
+        }
         for i in 0..2 {
             if self.touch.trigger_release[i] > 0 {
                 self.touch.trigger_release[i] -= 1;
@@ -1056,20 +1215,56 @@ impl Game<'_> {
             EditAction::AllFadeDown => t.layout.opacity = (t.layout.opacity - 0.1).max(0.1),
             EditAction::AllFadeUp => t.layout.opacity = (t.layout.opacity + 0.1).min(1.0),
             EditAction::Reset => {
-                let keep = (t.layout.opacity, t.layout.pass_through);
+                let keep = (
+                    t.layout.opacity,
+                    t.layout.pass_through,
+                    t.layout.sensitivity,
+                    t.layout.invert_y,
+                    t.layout.button_scale,
+                    t.layout.safe_margin,
+                    t.layout.stick_deadzone,
+                    t.layout.gui_scale,
+                );
                 t.layout = TouchLayout::of(t.layout.preset);
-                (t.layout.opacity, t.layout.pass_through) = keep;
+                (
+                    t.layout.opacity,
+                    t.layout.pass_through,
+                    t.layout.sensitivity,
+                    t.layout.invert_y,
+                    t.layout.button_scale,
+                    t.layout.safe_margin,
+                    t.layout.stick_deadzone,
+                    t.layout.gui_scale,
+                ) = keep;
                 t.selected = None;
                 t.dirty = false;
             }
             EditAction::Standard | EditAction::Bedrock => {
-                let keep = (t.layout.opacity, t.layout.pass_through);
+                let keep = (
+                    t.layout.opacity,
+                    t.layout.pass_through,
+                    t.layout.sensitivity,
+                    t.layout.invert_y,
+                    t.layout.button_scale,
+                    t.layout.safe_margin,
+                    t.layout.stick_deadzone,
+                    t.layout.gui_scale,
+                );
                 t.layout = TouchLayout::of(if action == EditAction::Bedrock {
                     Preset::Bedrock
                 } else {
                     Preset::Standard
                 });
-                (t.layout.opacity, t.layout.pass_through) = keep;
+                (
+                    t.layout.opacity,
+                    t.layout.pass_through,
+                    t.layout.sensitivity,
+                    t.layout.invert_y,
+                    t.layout.button_scale,
+                    t.layout.safe_margin,
+                    t.layout.stick_deadzone,
+                    t.layout.gui_scale,
+                ) = keep;
                 t.selected = None;
                 t.dirty = false;
             }
@@ -1125,6 +1320,7 @@ impl Game<'_> {
             Id::Chat => pad(self, Button::DPadRight),
             Id::Inventory => pad(self, Button::North),
             Id::Drop => pad(self, Button::East),
+            Id::Swap => pad(self, Button::West),
             Id::Keyboard => {
                 // Opens chat; the keyboard follows. Shown again if dismissed.
                 #[cfg(target_os = "android")]
@@ -1155,6 +1351,7 @@ impl Game<'_> {
                 Finger::Done
             }
             Id::Edit => {
+                self.touch_release_all();
                 self.touch.editing = true;
                 self.touch.dirty = false;
                 self.touch.selected = None;
@@ -1211,17 +1408,27 @@ impl Game<'_> {
                         .touch
                         .fingers
                         .values()
-                        .any(|f| matches!(f, Finger::Pointer))
+                        .any(|f| matches!(f, Finger::Pointer | Finger::Menu { .. }))
                 {
                     // One finger is the mouse; a second one would click twice.
                     Finger::Done
                 } else if !self.touch_controls_shown() {
                     send(self, cursor(device_id, pos));
-                    send(self, click(device_id, ElementState::Pressed));
                     // Asked again on the next frame: a tap on a text field brings the
                     // keyboard back after the system's back gesture hid it.
                     self.touch.ime_retap = true;
-                    Finger::Pointer
+                    if let Some(scroll) = self.touch_deferred_menu() {
+                        Finger::Menu {
+                            start: pos,
+                            last: pos,
+                            since: Instant::now(),
+                            dragging: false,
+                            scroll,
+                        }
+                    } else {
+                        send(self, click(device_id, ElementState::Pressed));
+                        Finger::Pointer
+                    }
                 } else if self.touch.editing {
                     if let Some(action) = gui.panel_hit(p) {
                         self.touch_edit(action);
@@ -1243,6 +1450,14 @@ impl Game<'_> {
                         last: pos,
                         since: Instant::now(),
                     }
+                } else if gui.hit(&self.touch.layout, p, false) == Some(Id::Stick)
+                    && self
+                        .touch
+                        .fingers
+                        .values()
+                        .any(|f| matches!(f, Finger::Stick))
+                {
+                    Finger::Done
                 } else if let Some(control) = gui.hit(&self.touch.layout, p, false) {
                     self.touch.press_at = pos;
                     let finger = self.touch_press(control);
@@ -1265,6 +1480,56 @@ impl Game<'_> {
                 self.touch.fingers.insert(id, finger);
             }
             TouchPhase::Moved => match self.touch.fingers.get(&id).copied() {
+                Some(Finger::Menu {
+                    start,
+                    last,
+                    since,
+                    mut dragging,
+                    scroll,
+                }) => {
+                    if self.touch_deferred_menu() != Some(scroll) {
+                        self.touch.fingers.remove(&id);
+                        if dragging && !scroll {
+                            send(self, cursor(device_id, [-1.0; 2]));
+                            send(self, click(device_id, ElementState::Released));
+                        }
+                        return;
+                    }
+                    if !dragging
+                        && (pos[0] - start[0]).hypot(pos[1] - start[1]) / f64::from(scale) > SLOP
+                    {
+                        dragging = true;
+                        if !scroll {
+                            send(self, cursor(device_id, start));
+                            send(self, click(device_id, ElementState::Pressed));
+                        }
+                    }
+                    send(self, cursor(device_id, pos));
+                    if dragging && scroll {
+                        use winit::event::MouseScrollDelta;
+                        send(
+                            self,
+                            WindowEvent::MouseWheel {
+                                device_id,
+                                delta: MouseScrollDelta::LineDelta(
+                                    0.0,
+                                    ((pos[1] - last[1]) / f64::from(scale) / 18.0) as f32,
+                                ),
+                                phase: TouchPhase::Moved,
+                            },
+                        );
+                    }
+                    self.touch.fingers.insert(
+                        id,
+                        Finger::Menu {
+                            start,
+                            last: pos,
+                            since,
+                            dragging,
+                            scroll,
+                        },
+                    );
+                }
                 Some(Finger::Pointer) => send(self, cursor(device_id, pos)),
                 Some(Finger::Stick) => self.touch_stick(&gui, p),
                 Some(Finger::Drag(control, off)) => {
@@ -1294,6 +1559,12 @@ impl Game<'_> {
                             attacking,
                         },
                     );
+                    let [dx, dy] = math::look(
+                        [dx, dy],
+                        f64::from(gui.w * scale),
+                        self.touch.layout.sensitivity,
+                        self.touch.layout.invert_y,
+                    );
                     self.mouse.on_move(0.0, 0.0, dx, dy, true, true);
                     self.last_input = Instant::now();
                 }
@@ -1309,6 +1580,12 @@ impl Game<'_> {
                         },
                     );
                     if self.touch.layout.pass_through {
+                        let [dx, dy] = math::look(
+                            [dx, dy],
+                            f64::from(gui.w * scale),
+                            self.touch.layout.sensitivity,
+                            self.touch.layout.invert_y,
+                        );
                         self.mouse.on_move(0.0, 0.0, dx, dy, true, true);
                         self.last_input = Instant::now();
                     }
@@ -1316,12 +1593,58 @@ impl Game<'_> {
                 Some(Finger::Press(button, last)) if self.touch.layout.pass_through => {
                     let (dx, dy) = (pos[0] - last[0], pos[1] - last[1]);
                     self.touch.fingers.insert(id, Finger::Press(button, pos));
+                    let [dx, dy] = math::look(
+                        [dx, dy],
+                        f64::from(gui.w * scale),
+                        self.touch.layout.sensitivity,
+                        self.touch.layout.invert_y,
+                    );
                     self.mouse.on_move(0.0, 0.0, dx, dy, true, true);
                     self.last_input = Instant::now();
                 }
                 _ => {}
             },
             TouchPhase::Ended | TouchPhase::Cancelled => match self.touch.fingers.remove(&id) {
+                Some(Finger::Menu {
+                    since,
+                    dragging,
+                    scroll,
+                    ..
+                }) => {
+                    if self.touch_deferred_menu() != Some(scroll) {
+                        if dragging && !scroll {
+                            send(self, cursor(device_id, [-1.0; 2]));
+                            send(self, click(device_id, ElementState::Released));
+                        }
+                        return;
+                    }
+                    if dragging && !scroll {
+                        let at = if touch.phase == TouchPhase::Cancelled {
+                            [-1.0; 2]
+                        } else {
+                            pos
+                        };
+                        send(self, cursor(device_id, at));
+                        send(self, click(device_id, ElementState::Released));
+                    } else if !dragging && touch.phase == TouchPhase::Ended {
+                        send(self, cursor(device_id, pos));
+                        let button = if !scroll && since.elapsed().as_millis() >= 450 {
+                            MouseButton::Right
+                        } else {
+                            MouseButton::Left
+                        };
+                        for state in [ElementState::Pressed, ElementState::Released] {
+                            send(
+                                self,
+                                WindowEvent::MouseInput {
+                                    device_id,
+                                    state,
+                                    button,
+                                },
+                            );
+                        }
+                    }
+                }
                 Some(Finger::Pointer) => {
                     // A cancelled touch (a system gesture took it) lets go off screen: no click.
                     let at = if touch.phase == TouchPhase::Cancelled {
@@ -1336,8 +1659,24 @@ impl Game<'_> {
                     self.touch.knob = [0.0, 0.0];
                     self.pad.injected.left = [0.0, 0.0];
                 }
-                Some(Finger::Press(button, _)) => self.pad.injected.set(button, false),
-                Some(Finger::Trigger { i, since, .. }) if since.elapsed().as_millis() < HOLD_MS => {
+                Some(Finger::Press(button, _)) => {
+                    let held = self
+                        .touch
+                        .fingers
+                        .values()
+                        .any(|f| matches!(f, Finger::Press(b, _) if *b == button));
+                    self.pad.injected.set(button, held);
+                    if !held && touch.phase == TouchPhase::Ended && !self.pad.state.held(button) {
+                        // Down and up can both arrive between polls. Keep one edge for
+                        // the pad's existing tick-safe tap path, without repeating a held key.
+                        self.pad.injected.set(button, true);
+                        self.pad.taps.push(button);
+                    }
+                }
+                Some(Finger::Trigger { i, since, .. })
+                    if touch.phase == TouchPhase::Ended
+                        && since.elapsed().as_millis() < HOLD_MS =>
+                {
                     // A short tap: keep it down a few frames so a tick sees
                     // one hit (or one use).
                     self.pad.injected.triggers[i] = 1.0;
@@ -1366,10 +1705,7 @@ impl Game<'_> {
     fn touch_stick(&mut self, gui: &Gui, p: [f32; 2]) {
         let (c, r) = gui.place(&self.touch.layout, Id::Stick);
         let mut v = [(p[0] - c[0]) / (r * 0.6), (c[1] - p[1]) / (r * 0.6)];
-        let len = v[0].hypot(v[1]);
-        if len > 1.0 {
-            v = [v[0] / len, v[1] / len];
-        }
+        v = math::stick(v, self.touch.layout.stick_deadzone);
         self.touch.knob = v;
         self.pad.injected.left = v;
         // Bedrock: the stick pushed all the way forward sprints.

@@ -15,7 +15,7 @@ final class UserDataArchive {
             "saves", "screenshots", "resourcepacks", "shaderpacks"));
     private static final Set<String> SETTINGS = new HashSet<>(Arrays.asList(
             "options.txt", "horizon-graphics.txt", "horizon-extras.txt", "horizon-player.txt",
-            "horizon-skin.txt", "horizon-skin.png", "servers.dat"));
+            "horizon-skin.txt", "horizon-skin.png", "servers.dat", "touch_layout.json"));
     private static final long MAX_BYTES = 8L << 30;
     private static final int MAX_FILES = 100000;
     interface Progress { void update(int files, long bytes); }

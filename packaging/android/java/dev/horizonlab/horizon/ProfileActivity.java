@@ -50,6 +50,9 @@ public class ProfileActivity extends Activity implements View.OnClickListener {
         dir = new File(SetupActivity.home(this));
         LinearLayout card = Ui.card(this);
         card.addView(Ui.text(this, Ui.t("Профиль", "Profile"), 26, Ui.TEXT, true));
+        Button controls = Ui.button(this, Ui.t("Управление и интерфейс", "Controls and interface"), false);
+        controls.setOnClickListener(v -> startActivity(new Intent(this, ControlsActivity.class)));
+        card.addView(controls, Ui.gap(this, 8));
         card.addView(Ui.text(this, Ui.t("Ник", "Name"), 14, Ui.MUTED, false), Ui.gap(this, 10));
         name = new EditText(this);
         name.setSingleLine(true);

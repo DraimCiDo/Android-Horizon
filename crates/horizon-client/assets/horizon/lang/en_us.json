@@ -608,5 +608,22 @@
   "horizon.pvp.shape.x": "X",
   "horizon.pvp.shape.circle": "Circle",
   "horizon.pvp.shape.square": "Square",
-  "horizon.pvp.shape.dot": "Dot"
+  "horizon.pvp.shape.dot": "Dot",
+  "horizon.touch.standard": "Standard",
+  "horizon.touch.bedrock": "Bedrock",
+  "horizon.touch.custom": "Custom",
+  "horizon.touch.look_on": "Button look: on",
+  "horizon.touch.look_off": "Button look: off",
+  "horizon.touch.size_down": "Size -",
+  "horizon.touch.size_up": "Size +",
+  "horizon.touch.fade_down": "Opacity -",
+  "horizon.touch.fade_up": "Opacity +",
+  "horizon.touch.all_down": "All opacity -",
+  "horizon.touch.all_up": "All opacity +",
+  "horizon.touch.hide": "Hide",
+  "horizon.touch.show": "Show",
+  "horizon.touch.reset": "Reset layout",
+  "horizon.touch.save": "Save",
+  "horizon.touch.selected": "Size / opacity",
+  "horizon.touch.drag": "Drag a button to move it; select to edit"
 }

@@ -243,5 +243,22 @@
   "How frames reach the screen, and the performance overlay.": "Как кадры попадают на экран, и оверлей производительности.",
   "Brighter-than-white output on an HDR display.": "Вывод ярче белого на HDR-дисплее.",
   "Results for \"%s\"": "Результаты для «%s»",
-  "No settings match.": "Нет подходящих настроек."
+  "No settings match.": "Нет подходящих настроек.",
+  "horizon.touch.standard": "Обычная",
+  "horizon.touch.bedrock": "Bedrock",
+  "horizon.touch.custom": "Своя",
+  "horizon.touch.look_on": "Обзор: вкл.",
+  "horizon.touch.look_off": "Обзор: выкл.",
+  "horizon.touch.size_down": "Размер -",
+  "horizon.touch.size_up": "Размер +",
+  "horizon.touch.fade_down": "Прозрачн. -",
+  "horizon.touch.fade_up": "Прозрачн. +",
+  "horizon.touch.all_down": "Все: альфа -",
+  "horizon.touch.all_up": "Все: альфа +",
+  "horizon.touch.hide": "Скрыть",
+  "horizon.touch.show": "Показать",
+  "horizon.touch.reset": "Сброс схемы",
+  "horizon.touch.save": "Сохранить",
+  "horizon.touch.selected": "Размер / альфа",
+  "horizon.touch.drag": "Перетащи кнопку; нажми для настройки"
 }

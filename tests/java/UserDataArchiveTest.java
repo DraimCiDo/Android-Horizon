@@ -62,6 +62,7 @@ public final class UserDataArchiveTest {
         put(source, "saves/World/level.dat", "world metadata");
         put(source, "saves/World/region/r.0.0.mca", "chunks");
         put(source, "options.txt", "new options");
+        put(source, "touch_layout.json", "{\"preset\":\"custom\"}");
         put(source, "horizon-skin.png", "skin");
         put(source, "resourcepacks/pack.zip", "pack");
         put(source, "screenshots/image.png", "image");
@@ -80,7 +81,7 @@ public final class UserDataArchiveTest {
         put(target, "options.txt", "original options");
         put(target, "resourcepacks/pack.zip", "original pack");
         UserDataArchive.Result result = UserDataArchive.restore(target, new ByteArrayInputStream(zip), PROGRESS);
-        assert result.files == 6;
+        assert result.files == 7;
         assert result.skipped == 1;
         assert read(target, "saves/World/level.dat").equals("original world");
         assert read(target, "saves/World (imported 1)/region/r.0.0.mca").equals("chunks");
@@ -88,6 +89,7 @@ public final class UserDataArchiveTest {
         assert read(target, "resourcepacks/pack.zip").equals("original pack");
         assert read(target, "resourcepacks/pack (imported 1).zip").equals("pack");
         assert read(target, "horizon-skin.png").equals("skin");
+        assert read(target, "touch_layout.json").equals("{\"preset\":\"custom\"}");
     }
 
     private static void malformedArchivesDoNotTouchPlayerData() throws Exception {

@@ -1,36 +1,34 @@
 > 🤖 Published by DraimCiDo's AI agent (Codex), not by DraimCiDo personally.
 
-## Android 0.4.2: launcher and world backups
+## Android 0.4.3: touch controls and interface
 
-- A portrait launcher with Play, Files and Build pages replaces immediate game startup.
-- Play opens setup when needed, launches the game and provides profile/account access.
-- Files opens the game folder in Android's document browser and exports portable ZIP
-  backups of worlds, screenshots, resource/shader packs, skin and player settings.
-- Restore preserves existing worlds and packs by giving imported duplicates a new
-  name, and keeps existing settings. It validates the complete archive before adding
-  player data. Generated resources, native mods and account credentials are excluded.
-- Microsoft application ID configuration now follows upstream: the build owner's
-  `HORIZON_MSA_CLIENT_ID` repository variable is validated and embedded in the APK.
-  This build has no registered application ID, so Microsoft login remains unavailable.
+- New **Controls and interface** screen in the launcher and in-game profile:
+  camera sensitivity/inversion, button size/opacity, edge margins, joystick
+  deadzone, control scheme and interface scale. Save and return to the game;
+  settings apply after all fingers are lifted, without restarting.
+- Resolution-independent camera movement and a touch-specific joystick deadzone.
+- Main/off-hand swap button; inventory/drop controls moved away from the hotbar.
+- Fast button taps reach the simulation; a second finger cannot steal the joystick
+  or release another finger's button. System-cancelled touches cannot become
+  short attack/use taps.
+- Tap inventory slots normally, long press for right click (half stack / one item),
+  drag through the normal inventory input path, and swipe world/server lists.
+- Responsive English/Russian layout editor; existing custom positions survive.
+  Touch preferences are now included in user-data backups.
 
-Download `horizon-0.4.2-s25-ultra-arm64.apk`; `SHA256SUMS` contains its checksum.
-The APK still includes the complete game resources and prepares them offline.
-The working Galaxy S25 Ultra profile, Vulkan driver choices and landscape gameplay
-are preserved. Engine base: [Horizon 63eccfc](https://github.com/horizon-rust/horizon/commit/63eccfc3559807d338e93ca2fec1e1fdc077a721).
+Download `horizon-0.4.3-s25-ultra-arm64.apk`; `SHA256SUMS` contains its checksum.
+Complete game resources remain inside the APK. The S25 Ultra device profile and
+engine base Horizon `63eccfc` are retained. Microsoft client ID configuration is
+still absent, as requested; Microsoft sign-in remains unavailable.
 
-The launcher/backup feature comparison used the public documentation of
-[DreamingbullyYT/horizon-android-edition](https://github.com/DreamingbullyYT/horizon-android-edition/tree/87449a0796cd5355700acbd419a468d659e09c9d).
-The new implementation is independent; no source, GPL touch-control components,
-fonts or engine patches were copied from that project.
+Validation: game compilation/type checking, geometry/deadzone/camera math tests,
+Android Java compilation, Python/JVM tests, APK signature, launcher entry point,
+embedded-resource checksum and 16 KiB ELF alignment. New touch gestures and UI
+still need testing on a physical phone.
 
-Validation: real JVM archive roundtrip, collision preservation, malformed archives,
-path traversal, symlink isolation and credential exclusion; Android Java compilation;
-Python tests; APK signing, embedded-resource checksum and 16 KiB ELF alignment checks.
-The new launcher and backup picker still require testing on a physical phone.
-
-ARM64 Android 8.0+; experimental prerelease. A fresh CI signing key means Android may
-require uninstalling a previous build. **Back up your worlds before uninstalling.**
-For 0.4.1, use Android's Files app → Horizon → `saves` and copy it outside the app
-folder; 0.4.1 has no in-app ZIP backup. Uninstalling removes app data.
+ARM64 Android 8.0+; experimental prerelease. CI uses a fresh signing key, so Android
+may require uninstalling the old APK. **Back up player data before uninstalling.**
+In 0.4.2 use Files → Create backup and save the ZIP outside Horizon. In 0.4.1 copy
+`saves` using Android's Files app → Horizon. Uninstalling deletes app data.
 
 🤖 Generated with [Codex](https://openai.com/codex/)

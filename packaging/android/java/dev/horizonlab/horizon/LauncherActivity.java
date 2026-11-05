@@ -77,6 +77,8 @@ public class LauncherActivity extends Activity {
                 "Player profile, skin, Microsoft sign-in, mods and Vulkan driver."), 14, Ui.MUTED, false));
         button(Ui.t("Открыть настройки профиля", "Open profile settings"), false,
                 () -> startActivity(new Intent(this, ProfileActivity.class)));
+        button(Ui.t("Управление и интерфейс", "Controls and interface"), false,
+                () -> startActivity(new Intent(this, ControlsActivity.class)));
         if (android.os.Build.MODEL.startsWith("SM-S938")) {
             Ui.section(card, "GALAXY S25 ULTRA");
             card.addView(Ui.text(this, Ui.t("Профиль устройства: до 60 FPS, дальность 8 чанков, масштаб 75%. Ваши изменения в игре сохраняются.",

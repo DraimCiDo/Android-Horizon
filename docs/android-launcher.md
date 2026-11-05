@@ -18,7 +18,8 @@ Downloads or a cloud provider. Save it outside Horizon's own game folder.
 
 The archive includes `saves/`, `screenshots/`, `resourcepacks/`, `shaderpacks/`,
 `options.txt`, `horizon-graphics.txt`, `horizon-extras.txt`, `horizon-player.txt`,
-`horizon-skin.txt`, `horizon-skin.png` and `servers.dat`, when present.
+`horizon-skin.txt`, `horizon-skin.png`, `servers.dat` and (0.4.3+)
+`touch_layout.json`, when present.
 It excludes generated game resources, logs, native mods and Microsoft credentials.
 Mod-specific configuration is not part of this backup format.
 
