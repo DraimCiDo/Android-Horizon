@@ -185,7 +185,7 @@ Turnip; совместимость драйверов зависит от уст
 ## Сборка из исходников
 
 Самый воспроизводимый путь — workflow [Android APK](.github/workflows/android.yml):
-**Actions → Android APK → Run workflow**, ветка `android-port`. Без `release_tag`
+**Actions → Android APK → Run workflow**, ветка `samsung-s25-ultra`. Без `release_tag`
 он создаёт APK-артефакт; с тегом `android-*` публикует релиз только после проверок.
 
 Локальная сборка требует Linux, Rust с `aarch64-linux-android`, `cargo-ndk`,
@@ -193,7 +193,7 @@ Android SDK 35 / Build Tools 35.0.0 / NDK 27.2.12479018, JDK 25 для подг�
 ресурсов и JDK 21 для Android Java-моста. Gradle не используется.
 
 ```sh
-git clone --branch android-port https://github.com/DraimCiDo/Android-Horizon.git
+git clone --branch samsung-s25-ultra https://github.com/DraimCiDo/Android-Horizon.git
 cd Android-Horizon
 rustup target add aarch64-linux-android
 cargo install cargo-ndk --locked
