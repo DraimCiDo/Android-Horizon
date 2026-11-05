@@ -21,6 +21,7 @@ import android.view.inputmethod.InputMethodManager;
  * mouse plays. The window draws under the display cutout.
  */
 public class HorizonActivity extends NativeActivity {
+    static volatile boolean active;
     static {
         System.loadLibrary("horizon");
     }
@@ -37,6 +38,7 @@ public class HorizonActivity extends NativeActivity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
+        active = true;
         applyCutout(this);
         sink = new TextSink(this);
         addContentView(sink, new ViewGroup.LayoutParams(1, 1));
@@ -116,6 +118,7 @@ public class HorizonActivity extends NativeActivity {
 
     @Override
     protected void onDestroy() {
+        active = false;
         super.onDestroy();
         // The window went away for good while the game still ran in this process (swiped away,
         // or finished by the system). The native side can't start again here: end the process

@@ -8,11 +8,11 @@ import sys
 
 PRIVATE_ROOTS = {".local", "decompiled", "minecraft", "assets", "run", "logs"}
 PRIVATE_EXTENSIONS = {".jar", ".class", ".jfr", ".hprof", ".java"}
-ORIGINAL_JDK_TOOLS = {"tools/JfrSummary.java", "tests/java/JfrFixture.java"}
+ORIGINAL_JDK_TOOLS = {"tools/JfrSummary.java", "tests/java/JfrFixture.java", "tests/java/UserDataArchiveTest.java"}
 ANDROID_SOURCES = {
     f"packaging/android/java/dev/horizonlab/horizon/{name}.java"
-    for name in ("HorizonActivity", "HorizonDocumentsProvider", "ModImportActivity", "Msa",
-                 "ProfileActivity", "SetupActivity", "SetupService", "Turnip", "Ui")
+    for name in ("HorizonActivity", "HorizonDocumentsProvider", "LauncherActivity", "ModImportActivity", "Msa",
+                 "ProfileActivity", "SetupActivity", "SetupService", "Turnip", "Ui", "UserDataArchive")
 }
 # The prepared folder's files in one file (crates/horizon-core/src/prepared_files.rs): Mojang's data.
 PRIVATE_NAMES = {"horizon-data.bin"}

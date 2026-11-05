@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="dev.horizonlab.horizon"
-    android:versionCode="21"
-    android:versionName="0.4.1">
+    android:versionCode="22"
+    android:versionName="0.4.2">
     <uses-sdk android:minSdkVersion="26" android:targetSdkVersion="35" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
@@ -25,7 +25,7 @@
         android:theme="@android:style/Theme.NoTitleBar.Fullscreen">
         <profileable android:shell="true" />
         <activity
-            android:name=".SetupActivity"
+            android:name=".LauncherActivity"
             android:exported="true"
             android:screenOrientation="sensorPortrait"
             android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density|smallestScreenSize">
@@ -34,6 +34,7 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <activity android:name=".SetupActivity" android:exported="false" android:screenOrientation="sensorPortrait" android:configChanges="orientation|screenSize|screenLayout|keyboardHidden|keyboard|navigation|uiMode|density|smallestScreenSize" />
         <activity
             android:name=".HorizonActivity"
             android:exported="false"

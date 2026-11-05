@@ -3,6 +3,12 @@
 Galaxy S25 Ultra: [device profile, APK build and validation](docs/samsung-s25-ultra.md).
 
 
+## Android launcher (0.4.2+)
+
+The portrait launcher provides Play, Files and Build pages, profile access and
+portable world/settings backup and restore. See [Android launcher](docs/android-launcher.md)
+for the archive format and collision handling.
+
 ## Complete APK (0.4.1+)
 
 Published Android APKs now contain the complete prepared game resources. Install
@@ -142,10 +148,11 @@ How to build one: [docs/android-mods.md](docs/android-mods.md).
   under the crosshair, or uses if there isn't one. Holding still breaks blocks.
 - The window now draws under the display cutout (shortEdges).
 
-## First-run download (no PC)
+## Developer builds: first-run download (no PC)
 
-When `files/resources` has no finished preparation, the app opens a setup screen
-(`SetupActivity`, `crates/horizon-client/src/android_setup.rs`) instead of the game. One button
+The launcher opens `SetupActivity` when Play is pressed and `files/resources` has
+no finished preparation. Published APKs unpack their complete resource bundle
+offline. In developer builds without that bundle, one button
 downloads the official game files, checking every SHA-1: the version JSON, the client JAR (must match
 `research-lock.json`'s `client_sha1`), the asset index and its sounds, fonts, languages, panorama
 and built-in packs (about 525 MB in total, 8 parallel connections). The JAR's assets, data, tag
@@ -164,8 +171,8 @@ A folder already prepared on a PC and pushed to `files/resources` is used as bef
 
 ## Profile: name and skin
 
-The person icon at the top left of the title and pause screens (and the
-"Profile" button on the first-run screen) opens the profile screen.
+The launcher's Play page opens profile settings. The person icon at the top left
+of the title and pause screens also opens the same profile screen.
 
 - **Name**: 3–16 characters, `A-Z a-z 0-9 _`, saved as `name:<NAME>` in
   `files/horizon-player.txt`. It is the offline name used on servers and LAN

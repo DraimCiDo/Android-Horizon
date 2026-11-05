@@ -23,7 +23,7 @@ jobs:
     timeout-minutes: 90
     env:
       PROFILE: release
-      HORIZON_VERSION: 0.4.1-android
+      HORIZON_VERSION: 0.4.2-android
       HORIZON_REQUIRE_BUNDLE: '1'
       HORIZON_MSA_CLIENT_ID: ${{ vars.HORIZON_MSA_CLIENT_ID }}
     steps:
@@ -70,16 +70,22 @@ jobs:
           python3 tools/check_public_tree.py
           rustc --edition 2024 --test crates/horizon-client/src/android_device.rs -o /tmp/device-profile-test
           /tmp/device-profile-test
+      - name: Test portable user data and build configuration
+        run: python3 -m unittest tests.test_android_user_data tests.test_android_auth tests.test_android_bundle
       - name: Build APK
         run: bash packaging/android/build_apk.sh
       - name: Verify APK and ELF alignment
         run: |
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -n1)
           "$BT/apksigner" verify --verbose target/android/horizon.apk
+          "$BT/aapt2" dump badging target/android/horizon.apk > target/android/apk-badging.txt
           "$ANDROID_NDK_HOME"/toolchains/llvm/prebuilt/*/bin/llvm-readelf -lW target/android/stage/lib/arm64-v8a/libhorizon.so > target/android/elf-segments.txt
           python3 - <<'PY'
           from pathlib import Path
           import hashlib, json, zipfile
+          badging = Path('target/android/apk-badging.txt').read_text()
+          assert "launchable-activity: name='dev.horizonlab.horizon.LauncherActivity'" in badging, 'Launcher entry point is missing'
+          assert "versionCode='22'" in badging and "versionName='0.4.2'" in badging, 'APK version mismatch'
           loads = [line.split() for line in Path('target/android/elf-segments.txt').read_text().splitlines() if line.strip().startswith('LOAD ')]
           assert loads and all(int(fields[-1], 16) >= 16384 for fields in loads), 'ELF is not aligned for 16 KiB pages'
           with zipfile.ZipFile('target/android/horizon.apk') as apk:
@@ -89,14 +95,14 @@ jobs:
               with apk.open(entry) as stream:
                   assert hashlib.file_digest(stream, 'sha256').hexdigest() == metadata['sha256']
           PY
-          cp target/android/horizon.apk target/android/horizon-0.4.1-s25-ultra-arm64.apk
+          cp target/android/horizon.apk target/android/horizon-0.4.2-s25-ultra-arm64.apk
           cd target/android
-          sha256sum horizon-0.4.1-s25-ultra-arm64.apk > SHA256SUMS
+          sha256sum horizon-0.4.2-s25-ultra-arm64.apk > SHA256SUMS
       - uses: actions/upload-artifact@v4
         with:
           name: horizon-s25-ultra-arm64
           path: |
-            target/android/horizon-0.4.1-s25-ultra-arm64.apk
+            target/android/horizon-0.4.2-s25-ultra-arm64.apk
             target/android/SHA256SUMS
           if-no-files-found: error
           retention-days: 14
@@ -108,6 +114,6 @@ jobs:
         run: |
           case "$RELEASE_TAG" in android-*) ;; *) echo "Expected an android-* release tag" >&2; exit 1;; esac
           gh release create "$RELEASE_TAG" \
-            target/android/horizon-0.4.1-s25-ultra-arm64.apk target/android/SHA256SUMS \
-            --title "Horizon Android 0.4.1 — complete APK, portrait setup" \
+            target/android/horizon-0.4.2-s25-ultra-arm64.apk target/android/SHA256SUMS \
+            --title "Horizon Android 0.4.2 — launcher and save backups" \
             --target "$GITHUB_SHA" --notes-file packaging/android/release-notes.md --prerelease

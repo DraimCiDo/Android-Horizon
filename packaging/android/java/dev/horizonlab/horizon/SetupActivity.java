@@ -18,9 +18,8 @@ import android.widget.TextView;
 import java.io.File;
 
 /**
- * The launcher activity. Starts the game when the resources are ready; otherwise shows the
- * first-run screen that downloads and prepares the game files on the phone (android_setup.rs).
- * The derived pack comes from the build's HORIZON_DERIVED_URL or files/horizon-derived.zip.
+ * First-run preparation, opened by the launcher. Release APKs unpack their bundled resources;
+ * developer APKs can download inputs through android_setup.rs.
  */
 public class SetupActivity extends Activity
         implements View.OnClickListener, DialogInterface.OnClickListener, Runnable {
@@ -322,7 +321,7 @@ public class SetupActivity extends Activity
     }
 
     private void launch() {
-        startActivity(new Intent(this, HorizonActivity.class));
+        setResult(RESULT_OK);
         finish();
     }
 
